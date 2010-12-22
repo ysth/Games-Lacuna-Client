@@ -16,7 +16,6 @@ our @BuildingTypes = (qw(
     Beeldeban
     Bread
     Burger
-    Capitol
     Cheese
     Chip
     Cider
@@ -35,13 +34,14 @@ our @BuildingTypes = (qw(
     Fusion
     GasGiantLab
     GasGiantPlatform
-    GeneticsLab
     Geo
     GeoThermalVent
+    GratchsGauntlet
     Grove
     HydroCarbon
     InterDimensionalRift
     KalavianRuins
+    KasternsKeep
     Lake
     Lagoon
     Lapis
@@ -69,12 +69,10 @@ our @BuildingTypes = (qw(
     Singularity
     Soup
     Stockpile
-    SubspaceSupplyDepot
     Syrup
-    TempleOfTheDrajilites
     TerraformingLab
     TerraformingPlatform
-    ThemePark
+    TheDillonForge
     University
     Volcano
     WasteEnergy
