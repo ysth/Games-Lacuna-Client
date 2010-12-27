@@ -50,6 +50,7 @@ GetOptions(\%opts,
     'do-digs',
     'min-ore=i',
     'min-arch=i',
+    'preferred-ore=s@',
     'send-excavators',
 );
 
@@ -443,6 +444,7 @@ sub do_digs {
         }
         my $ore = determine_ore(
             $opts{'min-ore'} || 10_000,
+            $opts{'preferred-ore'} || [],
             $status->{available_ore}{$planet},
             $status->{glyphs},
             $digging
@@ -462,10 +464,13 @@ sub do_digs {
 }
 
 sub determine_ore {
-    my ($min, $ore, $glyphs, $digging) = @_;
+    my ($min, $preferred, $ore, $glyphs, $digging) = @_;
+
+    my %is_preferred = map { $_ => 1 } @$preferred;
 
     my ($which) =
         sort {
+            ($is_preferred{$b} || 0) <=> ($is_preferred{$a} || 0) or
             ($glyphs->{$a} || 0) + ($digging->{$a} || 0) <=> ($glyphs->{$b} || 0) + ($digging->{$b} || 0) or
             $ore->{$b} <=> $ore->{$a} or
             int(rand(3)) - 1
@@ -637,23 +642,24 @@ will want to keep these at a relatively infrequent interval, such as every
 60 minutes at most.
 
 Options:
-  --verbose          - Output extra information.
-  --quiet            - Print no output except for errors.
-  --config <file>    - Specify a GLC config file, normally lacuna.yml.
-  --db <file>        - Specify a star database, normally stars.db.
-  --planet <name>    - Specify a planet to process.  This option can be
-                       passed multiple times to indicate several planets.
-                       If this is not specified, all relevant colonies will
-                       be inspected.
-  --do-digs          - Begin archaeology digs on any planets which are idle.
-  --min-ore <amount> - Do not begin digs with less ore in reserve than this
-                       amount.  The default is 10,000.
-  --min-arch <level> - Do not begin digs on any archaeology ministry less
-                       than this level.  The default is 1.
-  --send-excavators  - Launch ready excavators at their nearest destination.
-                       The information for these is selected from the star
-                       database, and the database is updated to reflect your
-                       new searches.
+  --verbose              - Output extra information.
+  --quiet                - Print no output except for errors.
+  --config <file>        - Specify a GLC config file, normally lacuna.yml.
+  --db <file>            - Specify a star database, normally stars.db.
+  --planet <name>        - Specify a planet to process.  This option can be
+                           passed multiple times to indicate several planets.
+                           If this is not specified, all relevant colonies will
+                           be inspected.
+  --do-digs              - Begin archaeology digs on any planets which are idle.
+  --min-ore <amount>     - Do not begin digs with less ore in reserve than this
+                           amount.  The default is 10,000.
+  --min-arch <level>     - Do not begin digs on any archaeology ministry less
+                           than this level.  The default is 1.
+  --preferred-ore <type> - Dig using the specified ore whenever available.
+  --send-excavators      - Launch ready excavators at their nearest destination.
+                           The information for these is selected from the star
+                           database, and the database is updated to reflect your
+                           new searches.
 END
     exit 1;
 }
