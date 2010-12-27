@@ -46,11 +46,17 @@ GetOptions(\%opts,
     'v|verbose',
     'db=s',
     'config=s',
+    'planet=s@',
     'do-digs',
     'send-excavators',
 );
 
 usage() if $opts{h};
+
+my %do_planets;
+if ($opts{planet}) {
+    %do_planets = map { normalize_planet($_) => 1 } @{$opts{planet}};
+}
 
 my $glc = Games::Lacuna::Client->new(
     cfg_file => $opts{config} || "$FindBin::Bin/../lacuna.yml",
@@ -90,7 +96,12 @@ sub get_status {
 
     # Scan each planet
     for my $planet_name (keys %planets) {
+        if (keys %do_planets) {
+            next unless $do_planets{normalize_planet($planet_name)};
+        }
+
         verbose("Inspecting $planet_name\n");
+
         # Load planet data
         my $planet    = $glc->body(id => $planets{$planet_name});
         my $result    = $planet->get_buildings;
@@ -288,6 +299,14 @@ END
     }
 
     output("\n");
+}
+
+sub normalize_planet {
+    my ($planet_name) = @_;
+
+    $planet_name =~ s/\W//g;
+    $planet_name = lc($planet_name);
+    return $planet_name;
 }
 
 sub format_time_delta {
@@ -610,6 +629,9 @@ Options:
   --quiet            - Print no output except for errors.
   --config <file>    - Specify a GLC config file, normally lacuna.yml.
   --db <file>        - Specify a star database, normally stars.db.
+  --planet <name>    - Specify a planet to process.  This option can be passed
+                       multiple times to indicate several planets.  If this is
+                       not specified, all relevant colonies will be inspected.
   --do-digs          - Begin archaeology digs on any planets which are idle.
   --send-excavators  - Launch ready excavators at their nearest destinations.
                        The information for these is selected from the star
