@@ -34,6 +34,7 @@ use Date::Parse qw(str2time);
 use Math::Round qw(round);
 use Getopt::Long;
 use Data::Dumper;
+use Exception::Class;
 
 use lib "$FindBin::Bin/../lib";
 use Games::Lacuna::Client;
@@ -409,19 +410,23 @@ sub send_excavators {
             my ($ships, $dest_name, $x, $y);
             while (! defined $dest_name) {
                 ($dest_name, $x, $y) = pick_destination($planet);
-                eval {
+                my $ok = eval {
                     $ships = $port->get_ships_for($status->{planets}{$planet}, {x => $x, y => $y});
+                    return 1;
                 };
-                if ($@) {
-                    my $e = $@;
-                    if ($e->code eq '1002') {
-                        # Empty orbit, update db and try again
-                        print "$dest_name is an empty orbit, trying again...\n";
-                        mark_orbit_empty($x, $y);
-                        $dest_name = undef;
-                        next;
-                    } else {
-                        die $e;
+                unless ($ok) {
+                    if (my $e = Exception::Class->caught('LacunaRPCException')) {
+                        if ($e->code eq '1002') {
+                            # Empty orbit, update db and try again
+                            print "$dest_name is an empty orbit, trying again...\n";
+                            mark_orbit_empty($x, $y);
+                            $dest_name = undef;
+                            next;
+                        }
+                    }
+                    else {
+                        my $e = Exception::Class->caught();
+                        ref $e ? $e->rethrow : die $e;
                     }
                 }
 
