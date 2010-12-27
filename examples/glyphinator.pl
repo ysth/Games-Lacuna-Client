@@ -27,12 +27,14 @@ use warnings;
 
 use feature ':5.10';
 
-use Data::Dumper;
-use Getopt::Long;
 use DBI;
-use Date::Parse qw(str2time);
-use List::Util qw(first);
 use FindBin;
+use List::Util qw(first);
+use Date::Parse qw(str2time);
+use Math::Round qw(round);
+use Getopt::Long;
+use Data::Dumper;
+
 use lib "$FindBin::Bin/../lib";
 use Games::Lacuna::Client;
 
@@ -282,15 +284,15 @@ sub format_time {
             return pluralize($_, 'second');
         }
         when ($_ < 5400) {
-            my $min = int($_ / 60);
+            my $min = round($_ / 60);
             return pluralize($min, 'minute');
         }
         when ($_ < 86400) {
-            my $hrs = int($_ / 3600);
+            my $hrs = round($_ / 3600);
             return pluralize($hrs, 'hour');
         }
         default {
-            my $days = int($_ / 86400);
+            my $days = round($_ / 86400);
             return pluralize($days, 'day');
         }
     }
