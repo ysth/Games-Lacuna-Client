@@ -48,6 +48,8 @@ GetOptions(\%opts,
     'config=s',
     'planet=s@',
     'do-digs',
+    'min-ore=i',
+    'min-arch=i',
     'send-excavators',
 );
 
@@ -113,13 +115,13 @@ sub get_status {
         if ($arch) {
             verbose("Found an archaeology ministry on $planet_name\n");
             $status->{archmin}{$planet_name} = $arch;
-            my $now = time();
             my $arch_detail = $arch->view;
+            $status->{archlevel}{$planet_name} = $arch_detail->{building}{level};
             if ($arch_detail->{building}{work}) {
                 my $time_left = $arch_detail->{building}{work}{seconds_remaining};
                 push @{$status->{digs}}, {
                     planet   => $planet_name,
-                    finished => $now + $time_left,
+                    finished => time() + $time_left,
                 };
             } else {
                 $status->{idle}{$planet_name} = 1;
@@ -435,7 +437,16 @@ sub do_digs {
     my $digging = {};
 
     for my $planet (keys %{$status->{idle}}) {
-        my $ore = determine_ore($status->{available_ore}{$planet}, $status->{glyphs}, $digging);
+        if ($opts{'min-arch'} and $status->{archlevel}{$planet} < $opts{'min-arch'}) {
+            output("$planet is not above specified Archaeology Ministry level ($opts{'min-arch'}), skipping dig.\n");
+            next;
+        }
+        my $ore = determine_ore(
+            $opts{'min-ore'} || 10_000,
+            $status->{available_ore}{$planet},
+            $status->{glyphs},
+            $digging
+        );
         if ($ore) {
             output("Starting a dig for $ore on $planet...\n");
             $status->{archmin}{$planet}->search_for_glyph($ore);
@@ -451,7 +462,7 @@ sub do_digs {
 }
 
 sub determine_ore {
-    my ($ore, $glyphs, $digging) = @_;
+    my ($min, $ore, $glyphs, $digging) = @_;
 
     my ($which) =
         sort {
@@ -459,6 +470,7 @@ sub determine_ore {
             $ore->{$b} <=> $ore->{$a} or
             int(rand(3)) - 1
         }
+        grep { $ore->{$_} >= $min }
         keys %$ore;
 
     if ($which) {
@@ -629,11 +641,16 @@ Options:
   --quiet            - Print no output except for errors.
   --config <file>    - Specify a GLC config file, normally lacuna.yml.
   --db <file>        - Specify a star database, normally stars.db.
-  --planet <name>    - Specify a planet to process.  This option can be passed
-                       multiple times to indicate several planets.  If this is
-                       not specified, all relevant colonies will be inspected.
+  --planet <name>    - Specify a planet to process.  This option can be
+                       passed multiple times to indicate several planets.
+                       If this is not specified, all relevant colonies will
+                       be inspected.
   --do-digs          - Begin archaeology digs on any planets which are idle.
-  --send-excavators  - Launch ready excavators at their nearest destinations.
+  --min-ore <amount> - Do not begin digs with less ore in reserve than this
+                       amount.  The default is 10,000.
+  --min-arch <level> - Do not begin digs on any archaeology ministry less
+                       than this level.  The default is 1.
+  --send-excavators  - Launch ready excavators at their nearest destination.
                        The information for these is selected from the star
                        database, and the database is updated to reflect your
                        new searches.
