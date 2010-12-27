@@ -53,6 +53,7 @@ GetOptions(\%opts,
     'min-arch=i',
     'preferred-ore=s@',
     'send-excavators',
+    'dry-run',
 );
 
 usage() if $opts{h};
@@ -468,12 +469,16 @@ sub do_digs {
             $digging
         );
         if ($ore) {
-            output("Starting a dig for $ore on $planet...\n");
-            $status->{archmin}{$planet}->search_for_glyph($ore);
-            push @{$status->{digs}}, {
-                planet   => $planet,
-                finished => time() + (6 * 60 * 60),
-            };
+            if ($opts{'dry-run'}) {
+                output("Would have started a dig for $ore on $planet.\n");
+            } else {
+                output("Starting a dig for $ore on $planet...\n");
+                $status->{archmin}{$planet}->search_for_glyph($ore);
+                push @{$status->{digs}}, {
+                    planet   => $planet,
+                    finished => time() + (6 * 60 * 60),
+                };
+            }
             delete $status->{idle}{$planet};
         } else {
             output("Not starting a dig on $planet; not enough of any type of ore.\n");
@@ -555,24 +560,28 @@ sub send_excavators {
                 $_->{type} eq 'excavator'
             } @{$ships->{available}};
 
-            output("Sending excavator from $planet to $dest_name...\n");
-            my $launch_status = $port->send_ship($ex->{id}, {x => $x, y => $y});
-
-            if ($launch_status->{ship}->{date_arrives}) {
-                push @{$status->{flying}},
-                    {
-                        planet      => $planet,
-                        destination => $launch_status->{ship}{to}{name},
-                        arrives     => str2time(
-                            map { s!^(\d+)\s+(\d+)\s+!$2/$1/!; $_ }
-                            $launch_status->{ship}{date_arrives}
-                        ),
-                    };
-
-                    update_last_sent($x, $y);
+            if ($opts{'dry-run'}) {
+                output("Would have sent excavator from $planet to $dest_name.\n");
             } else {
-                diag("Error sending excavator to $dest_name!\n");
-                warn Dumper $launch_status;
+                output("Sending excavator from $planet to $dest_name...\n");
+                my $launch_status = $port->send_ship($ex->{id}, {x => $x, y => $y});
+
+                if ($launch_status->{ship}->{date_arrives}) {
+                    push @{$status->{flying}},
+                        {
+                            planet      => $planet,
+                            destination => $launch_status->{ship}{to}{name},
+                            arrives     => str2time(
+                                map { s!^(\d+)\s+(\d+)\s+!$2/$1/!; $_ }
+                                $launch_status->{ship}{date_arrives}
+                            ),
+                        };
+
+                        update_last_sent($x, $y);
+                } else {
+                    diag("Error sending excavator to $dest_name!\n");
+                    warn Dumper $launch_status;
+                }
             }
         }
 
@@ -708,6 +717,8 @@ Options:
                            The information for these is selected from the star
                            database, and the database is updated to reflect your
                            new searches.
+  --dry-run              - Don't actually take any action, just report status and
+                           what actions would have taken place.
 END
     exit 1;
 }
