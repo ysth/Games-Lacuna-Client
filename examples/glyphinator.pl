@@ -45,6 +45,7 @@ GetOptions(\%opts,
     'q|quiet',
     'v|verbose',
     'db=s',
+    'create-db',
     'config=s',
     'planet=s@',
     'do-digs',
@@ -72,9 +73,26 @@ if (-f $db_file) {
     $star_db = DBI->connect("dbi:SQLite:$db_file")
         or die "Can't open star database $db_file: $DBI::errstr\n";
 } else {
-    warn "No star database found.  Specify it with --db.\n";
-    if ($opts{'send-excavators'}) {
-        warn "Can't send excavators without star database!\n";
+    if ($opts{'create-db'}) {
+        $star_db = DBI->connect("dbi:SQLite:$db_file")
+            or die "Can't create star database $db_file: $DBI::errstr\n";
+        for my $sql (create_star_db_sql()) {
+            $star_db->do($sql);
+        }
+        output("$db_file initialized\n");
+    } else {
+        warn "No star database found.  Specify it with --db or use --create-db to create it.\n";
+        if ($opts{'send-excavators'}) {
+            warn "Can't send excavators without star database!\n";
+        }
+    }
+}
+if ($star_db) {
+    # Check that db is populated
+    my ($cnt) = $star_db->selectrow_array('select count(*) from orbitals');
+    unless ($cnt) {
+        diag("Star database is empty!\n");
+        $star_db = undef;
     }
 }
 
@@ -625,6 +643,35 @@ sub mark_orbit_empty {
     }
 }
 
+sub create_star_db_sql {
+    return
+        <<SQL,
+CREATE TABLE stars(
+    id    int   primary key,
+    name  text,
+    x     int,
+    y     int,
+    color text
+)
+SQL
+        <<SQL,
+CREATE TABLE orbitals(
+    body_id        int,
+    star_id        int,
+    orbit          int,
+    x              int,
+    y              int,
+    type           text,
+    last_excavated datetime,
+    PRIMARY KEY(star_id, orbit),
+    FOREIGN KEY(star_id) REFERENCES stars(id)
+)
+SQL
+        <<SQL,
+CREATE INDEX orbital_x_y on orbitals(x,y)
+SQL
+}
+
 sub usage {
     diag(<<END);
 Usage: $0 [options]
@@ -646,6 +693,7 @@ Options:
   --quiet                - Print no output except for errors.
   --config <file>        - Specify a GLC config file, normally lacuna.yml.
   --db <file>            - Specify a star database, normally stars.db.
+  --create-db            - Create the star database and initialize the schema.
   --planet <name>        - Specify a planet to process.  This option can be
                            passed multiple times to indicate several planets.
                            If this is not specified, all relevant colonies will
