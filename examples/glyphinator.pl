@@ -216,7 +216,6 @@ sub get_status {
             my @building =
                 map {
                     {
-                        planet   => $planet_name,
                         finished => str2time(
                             map { s!^(\d+)\s+(\d+)\s+!$2/$1/!; $_ }
                             $_->{date_completed}
@@ -227,7 +226,7 @@ sub get_status {
                 @{$work_queue->{ships_building}};
 
             if (@building) {
-                push @{$status->{building}}, @building;
+                push @{$status->{building}{$planet_name}}, @building;
                 $status->{not_building}{$planet_name} = 0;
             }
 
@@ -241,8 +240,6 @@ sub get_status {
 }
 
 sub report_status {
-    my @events;
-
     if (keys %{$status->{glyphs} || {}}) {
         my $total_glyphs = 0;
         output("Current glyphs:\n");
@@ -265,8 +262,9 @@ You have excavators ready to send.  Specify --send-excavators if you want to
 send them to the closest available destinations.
 *****************
 END
-        for my $planet (@planets) {
-            output("$planet has " . pluralize($status->{ready}{$planet}, 'excavator') . " ready to launch!\n");
+        for my $planet (sort @planets) {
+            output("$planet has ", pluralize($status->{ready}{$planet}, 'excavator')
+                , " ready to launch!\n");
         }
         output("\n");
     }
@@ -285,14 +283,34 @@ END
         output("\n");
     }
 
-    # Any planets not building excavators?
-    if (my @planets = grep { $status->{not_building}{$_} } keys %{$status->{not_building}}) {
-        for my $planet (@planets) {
-            output("$planet is not currently building any excavators!  It has " . pluralize($status->{open_docks}{$planet}, 'spot') . " currently available.\n");
+
+    # Fix this to be something like the following:
+    #   Planet Foo is buildng N excavators, first done in [when], last done in [when]
+    if (grep { @{$status->{building}{$_}} } keys %{$status->{building}}
+        or grep { $status->{not_building}{$_} } keys %{$status->{not_building}}) {
+
+        output("Excavators building:\n");
+        for my $planet (sort keys %{$status->{planets}}) {
+            if ($status->{building}{$planet} and @{$status->{building}{$planet}}) {
+                my @sorted = sort { $a->{finished} <=> $b->{finished} }
+                    @{$status->{building}{$planet}};
+
+                my $first = $sorted[0];
+                my $last = $sorted[$#sorted];
+
+                output("    ",scalar(@sorted), " excavators building on $planet, ",
+                    "first done in ", format_time($first->{finished}),
+                    ", last done in ", format_time($last->{finished}), "\n");
+
+            } elsif ($status->{not_building}{$planet}) {
+                output("$planet is not currently building any excavators!  It has "
+                    . pluralize($status->{open_docks}{$planet}, 'spot') . " currently available.\n");
+            }
         }
         output("\n");
     }
 
+    my @events;
     for my $dig (@{$status->{digs}}) {
         push @events, {
             epoch  => $dig->{finished},
@@ -303,24 +321,16 @@ END
     for my $ship (@{$status->{flying}}) {
         push @events, {
             epoch  => $ship->{arrives},
-            detail => "Excavator arriving at $ship->{destination}",
+            detail => "Excavator from $ship->{planet} arriving at $ship->{destination}",
         };
     }
-
-    for my $ship (@{$status->{building}}) {
-        push @events, {
-            epoch  => $ship->{finished},
-            detail => "Excavator finishes building on $ship->{planet}",
-        };
-    }
-
     @events =
         sort { $a->{epoch} <=> $b->{epoch} }
         map  { $_->{when} = format_time($_->{epoch}); $_ }
         @events;
 
     if (@events) {
-        output("Upcoming events:\n");
+        output("Searches completing:\n");
         for my $event (@events) {
             display_event($event);
         }
@@ -410,7 +420,7 @@ sub pluralize {
 sub display_event {
     my ($event) = @_;
 
-    output(sprintf "%15s: %s\n", $event->{when}, $event->{detail});
+    output(sprintf "    %11s: %s\n", $event->{when}, $event->{detail});
 }
 
 ## Buildings ##
