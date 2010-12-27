@@ -353,8 +353,16 @@ sub find_spaceport {
 ## Arch digs ##
 
 sub do_digs {
+
+    # Try to avoid digging for the same ore on every planet, even if it's
+    # determined somehow to be the "best" option.  We don't have access to
+    # whatever digs are currently in progress so we'll base this just on what
+    # we've started during this run.  This will be computed simply by adding
+    # each current dig to glyphs, as if it were going to be successful.
+    my $digging = {};
+
     for my $planet (keys %{$status->{idle}}) {
-        my $ore = determine_ore($status->{available_ore}{$planet}, $status->{glyphs});
+        my $ore = determine_ore($status->{available_ore}{$planet}, $status->{glyphs}, $digging);
         if ($ore) {
             print "Starting a dig for $ore on $planet...\n";
             $status->{archmin}{$planet}->search_for_glyph($ore);
@@ -370,15 +378,19 @@ sub do_digs {
 }
 
 sub determine_ore {
-    my ($ore, $glyphs) = @_;
+    my ($ore, $glyphs, $digging) = @_;
 
     my ($which) =
         sort {
-            ($glyphs->{$a} || 0) <=> ($glyphs->{$b} || 0) ||
-            $ore->{$b} <=> $ore->{$a} ||
+            ($glyphs->{$a} || 0) + ($digging->{$a} || 0) <=> ($glyphs->{$b} || 0) + ($digging->{$b} || 0) or
+            $ore->{$b} <=> $ore->{$a} or
             int(rand(3)) - 1
         }
         keys %$ore;
+
+    if ($which) {
+        $digging->{$which}++;
+    }
 
     return $which;
 }
