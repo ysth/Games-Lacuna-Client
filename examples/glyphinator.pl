@@ -520,10 +520,15 @@ sub send_excavators {
         verbose("Prepping excavators on $planet\n");
         my $port = $status->{spaceports}{$planet};
 
+        # During a dry-run, not actually updating the database results in
+        # each excavator from each planet going to the same target.  Add
+        # them to an exclude list to simulate them being actually used.
+        my %skip;
+
         for (1 .. $status->{ready}{$planet}) {
             my ($ships, $dest_name, $x, $y);
             while (! defined $dest_name) {
-                ($dest_name, $x, $y) = pick_destination($planet);
+                ($dest_name, $x, $y) = pick_destination($planet, [keys %skip]);
                 my $ok = eval {
                     $ships = $port->get_ships_for($status->{planets}{$planet}, {x => $x, y => $y});
                     return 1;
@@ -559,6 +564,8 @@ sub send_excavators {
                 }
             }
 
+            $skip{$dest_name}++;
+
             my $ex = first {
                 $_->{type} eq 'excavator'
             } @{$ships->{available}};
@@ -593,11 +600,17 @@ sub send_excavators {
 }
 
 sub pick_destination {
-    my ($planet) = @_;
+    my ($planet, $skip) = @_;
 
     # Pick something closest and ready
     my $x = $status->{planet_location}{$planet}{x};
     my $y = $status->{planet_location}{$planet}{y};
+
+    my $skip_sql = '';
+    if ($skip and @$skip) {
+        $skip_sql = "and s.name || ' ' || o.orbit not in (" . join(',',map { '?' } 1..@$skip) . ")";
+    }
+
     my $find_dest = $star_db->prepare(<<SQL);
 select   s.name, o.orbit, o.x, o.y, (o.x - ?) * (o.x - ?) + (o.y - ?) * (o.y - ?) as dist
 from     orbitals o
@@ -606,6 +619,7 @@ where    (type in ('planet', 'asteroid') or type is null)
 and      (last_excavated is null or date(last_excavated) < date('now', '-30 days'))
 and      o.x between ? and ?
 and      o.y between ? and ?
+$skip_sql
 order by (o.x - ?) * (o.x - ?) + (o.y - ?) * (o.y - ?) asc
 limit    1
 SQL
@@ -615,14 +629,16 @@ SQL
     while (!defined $dest_x) {
         $max_dist += 100;
         verbose("Increasing box size to " . ($max_dist * 2) . "\n");
-        $find_dest->execute(
-            $x, $x, $y, $y,
-            $x - $max_dist,
-            $x + $max_dist,
-            $y - $max_dist,
-            $y + $max_dist,
-            $x, $x, $y, $y
-        );
+
+        # select columns,x/y betweens
+        my @vals = ($x, $x, $y, $y, $x - $max_dist, $x + $max_dist, $y - $max_dist, $y + $max_dist);
+        if ($skip) {
+            push @vals, @$skip;
+        }
+        # 'order by' values
+        push @vals, $x, $x, $y, $y;
+
+        $find_dest->execute(@vals);
         my $row = $find_dest->fetchrow_hashref;
         if ($row) {
             $dest_x = $row->{x};
