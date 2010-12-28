@@ -241,14 +241,17 @@ sub report_status {
     my @events;
 
     if (keys %{$status->{glyphs} || {}}) {
+        my $total_glyphs = 0;
         output("Current glyphs:\n");
         my $cnt;
         for my $glyph (sort keys %{$status->{glyphs}}) {
+            $total_glyphs += $status->{glyphs}->{$glyph};
             output(sprintf '%13s: %3s', $glyph, $status->{glyphs}->{$glyph});
             output("\n") unless ++$cnt % 4
         }
         output("\n") if $cnt % 4;
         output("\n");
+        output("Current stock: $total_glyphs glyphs\n\n");
     }
 
     # Ready to go now?
