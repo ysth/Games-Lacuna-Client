@@ -525,43 +525,59 @@ sub send_excavators {
         # them to an exclude list to simulate them being actually used.
         my %skip;
 
-        for (1 .. $status->{ready}{$planet}) {
-            my ($ships, $dest_name, $x, $y);
-            while (! defined $dest_name) {
-                ($dest_name, $x, $y) = pick_destination($planet, [keys %skip]);
-                my $ok = eval {
-                    $ships = $port->get_ships_for($status->{planets}{$planet}, {x => $x, y => $y});
-                    return 1;
-                };
-                unless ($ok) {
-                    if (my $e = Exception::Class->caught('LacunaRPCException')) {
-                        if ($e->code eq '1002') {
-                            # Empty orbit, update db and try again
-                            output("$dest_name is an empty orbit, trying again...\n");
-                            mark_orbit_empty($x, $y);
-                            $dest_name = undef;
-                            next;
-                        }
+        my @dests = pick_destination($planet,
+            count => $status->{ready}{$planet},
+        );
+
+        if (@dests < $status->{ready}{$planet}) {
+            diag("Couldn't fetch $status->{ready}{$planet} destinations from $planet!\n");
+        }
+
+        for (@dests) {
+            my ($dest_name, $x, $y) = @$_;
+
+            my $ships;
+            my $ok = eval {
+                $ships = $port->get_ships_for($status->{planets}{$planet}, {x => $x, y => $y});
+                return 1;
+            };
+            unless ($ok) {
+                if (my $e = Exception::Class->caught('LacunaRPCException')) {
+                    if ($e->code eq '1002') {
+                        # Empty orbit, update db and try again
+                        output("$dest_name is an empty orbit, trying again...\n");
+                        mark_orbit_empty($x, $y);
+
+                        push @dests, pick_destination($planet,
+                            count => 1,
+                            skip  => [keys %skip],
+                        );
+                        next;
                     }
-                    else {
-                        my $e = Exception::Class->caught();
-                        ref $e ? $e->rethrow : die $e;
-                    }
+                }
+                else {
+                    my $e = Exception::Class->caught();
+                    ref $e ? $e->rethrow : die $e;
+                }
+            }
+
+            unless (grep { $_->{type} eq 'excavator' } @{$ships->{available}}) {
+                if (grep { $_->{reason}[0] eq '1010' } @{$ships->{unavailable}}) {
+                    # This will set the "last_excavated" time to now, which is not
+                    # the case, but it's as good as we have.  It means that some bodies
+                    # might take longer to get re-dug but whatever, there are others
+                    output("$dest_name was unavailable due to recent search, trying again...\n");
+                    update_last_sent($x, $y);
+                } else {
+                    diag("Unknown error sending excavator from $planet to $dest_name!\n");
+                    next PLANET;
                 }
 
-                unless (grep { $_->{type} eq 'excavator' } @{$ships->{available}}) {
-                    if (grep { $_->{reason}[0] eq '1010' } @{$ships->{unavailable}}) {
-                        # This will set the "last_excavated" time to now, which is not
-                        # the case, but it's as good as we have.  It means that some bodies
-                        # might take longer to get re-dug but whatever, there are others
-                        output("$dest_name was unavailable due to recent search, trying again...\n");
-                        update_last_sent($x, $y);
-                    } else {
-                        diag("Unknown error sending excavator from $planet to $dest_name!\n");
-                        next PLANET;
-                    }
-                    $dest_name = undef;
-                }
+                push @dests, pick_destination($planet,
+                    count => 1,
+                    skip  => [keys %skip],
+                );
+                next;
             }
 
             $skip{$dest_name}++;
@@ -600,18 +616,29 @@ sub send_excavators {
 }
 
 sub pick_destination {
-    my ($planet, $skip) = @_;
+    my ($planet, %args) = @_;
 
-    # Pick something closest and ready
-    my $x = $status->{planet_location}{$planet}{x};
-    my $y = $status->{planet_location}{$planet}{y};
+    my $base_x = $status->{planet_location}{$planet}{x};
+    my $base_y = $status->{planet_location}{$planet}{y};
 
-    my $skip_sql = '';
-    if ($skip and @$skip) {
-        $skip_sql = "and s.name || ' ' || o.orbit not in (" . join(',',map { '?' } 1..@$skip) . ")";
-    }
+    my $count       = $args{count} || 1;
+    my $current_max = $args{min_dist} || 0;
+    my $skip        = $args{skip} || [];
 
-    my $find_dest = $star_db->prepare(<<SQL);
+    my @results;
+    while (@results < $count and (!$args{max_dist} or $current_max < $args{max_dist})) {
+        my $current_min = $current_max;
+        $current_max += 100;
+        $current_max = $args{max_dist}
+            if $args{max_dist} and $current_max > $args{max_dist};
+        verbose("Increasing box size, max is $current_max, min is $current_min\n");
+
+        my $skip_sql = '';
+        if (@$skip) {
+            $skip_sql = "and s.name || ' ' || o.orbit not in (" . join(',',map { '?' } 1..@$skip) . ")";
+        }
+        my $inner_box = $current_min > 0 ? 'and o.x not between ? and ? and o.y not between ? and ?' : '';
+        my $find_dest = $star_db->prepare(<<SQL);
 select   s.name, o.orbit, o.x, o.y, (o.x - ?) * (o.x - ?) + (o.y - ?) * (o.y - ?) as dist
 from     orbitals o
 join     stars s on o.star_id = s.id
@@ -619,38 +646,41 @@ where    (type in ('planet', 'asteroid') or type is null)
 and      (last_excavated is null or date(last_excavated) < date('now', '-30 days'))
 and      o.x between ? and ?
 and      o.y between ? and ?
+$inner_box
 $skip_sql
-order by (o.x - ?) * (o.x - ?) + (o.y - ?) * (o.y - ?) asc
-limit    1
+order by dist asc
+limit    $count
 SQL
 
-    my $max_dist = 0;
-    my ($dest_x, $dest_y, $dest_name);
-    while (!defined $dest_x) {
-        $max_dist += 100;
-        verbose("Increasing box size to " . ($max_dist * 2) . "\n");
-
         # select columns,x/y betweens
-        my @vals = ($x, $x, $y, $y, $x - $max_dist, $x + $max_dist, $y - $max_dist, $y + $max_dist);
-        if ($skip) {
-            push @vals, @$skip;
+        my @vals = (
+            $base_x, $base_x, $base_y, $base_y,
+            $base_x - $current_max,
+            $base_x + $current_max,
+            $base_y - $current_max,
+            $base_y + $current_max,
+        );
+        if ($current_min > 0) {
+            push @vals,
+                $base_x - $current_min,
+                $base_x + $current_min,
+                $base_y - $current_min,
+                $base_y + $current_min,
         }
-        # 'order by' values
-        push @vals, $x, $x, $y, $y;
+        push @vals, @$skip;
 
         $find_dest->execute(@vals);
-        my $row = $find_dest->fetchrow_hashref;
-        if ($row) {
-            $dest_x = $row->{x};
-            $dest_y = $row->{y};
-            $dest_name = "$row->{name} $row->{orbit}";
-
+        while (my $row = $find_dest->fetchrow_hashref) {
+            my $dest_name = "$row->{name} $row->{orbit}";
             my $dist = int(sqrt($row->{dist}));
             verbose("Selected destination $dest_name, which is $dist units away\n");
+
+            push @results, [$dest_name, $row->{x}, $row->{y}];
+            push @$skip, $dest_name;
         }
     }
 
-    return ($dest_name, $dest_x, $dest_y);
+    return @results;
 }
 
 sub update_last_sent {
