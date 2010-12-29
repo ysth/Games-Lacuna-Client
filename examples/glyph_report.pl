@@ -134,7 +134,7 @@ sub creation_summary {
                 if(not $Games::Lacuna::Client::PrettyPrint::ansi_color) {
                     $no_color_ask = $remaining{$glyph}{$ordered} ? '*' : '';
                 }
-                $segment .= sprintf qq{%-15s}, $ordered . ($no_color_ask );
+                $segment .= sprintf qq{%-15s}, $ordered . ' (' . ($contents{$ordered} || 0) . ')' . ($no_color_ask );
                 $segment .= _c_('reset');
                 push @out, $segment;
             }
