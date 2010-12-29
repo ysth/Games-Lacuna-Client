@@ -53,6 +53,8 @@ GetOptions(\%opts,
     'min-arch=i',
     'preferred-ore=s@',
     'send-excavators',
+    'min-dist=i',
+    'max-dist=i',
     'dry-run',
 );
 
@@ -526,7 +528,9 @@ sub send_excavators {
         my %skip;
 
         my @dests = pick_destination($planet,
-            count => $status->{ready}{$planet},
+            count    => $status->{ready}{$planet},
+            min_dist => $opts{'min-dist'} || undef,
+            max_dist => $opts{'max-dist'} || undef,
         );
 
         if (@dests < $status->{ready}{$planet}) {
@@ -549,8 +553,10 @@ sub send_excavators {
                         mark_orbit_empty($x, $y);
 
                         push @dests, pick_destination($planet,
-                            count => 1,
-                            skip  => [keys %skip],
+                            count    => 1,
+                            min_dist => $opts{'min-dist'} || undef,
+                            max_dist => $opts{'max-dist'} || undef,
+                            skip     => [keys %skip],
                         );
                         next;
                     }
@@ -574,8 +580,10 @@ sub send_excavators {
                 }
 
                 push @dests, pick_destination($planet,
-                    count => 1,
-                    skip  => [keys %skip],
+                    count    => 1,
+                    min_dist => $opts{'min-dist'} || undef,
+                    max_dist => $opts{'max-dist'} || undef,
+                    skip     => [keys %skip],
                 );
                 next;
             }
@@ -621,16 +629,19 @@ sub pick_destination {
     my $base_x = $status->{planet_location}{$planet}{x};
     my $base_y = $status->{planet_location}{$planet}{y};
 
+    my $real_min = $args{min_dist} ? int(sqrt($args{min_dist} * $args{min_dist} / 2)) : 0;
+    my $real_max = $args{max_dist} ? int(sqrt($args{max_dist} * $args{max_dist} / 2)) : 0;
+
     my $count       = $args{count} || 1;
-    my $current_max = $args{min_dist} || 0;
+    my $current_max = $real_min;
     my $skip        = $args{skip} || [];
 
     my @results;
-    while (@results < $count and (!$args{max_dist} or $current_max < $args{max_dist})) {
+    while (@results < $count and (!$real_max or $current_max < $real_max)) {
         my $current_min = $current_max;
         $current_max += 100;
-        $current_max = $args{max_dist}
-            if $args{max_dist} and $current_max > $args{max_dist};
+        $current_max = $real_max
+            if $real_max and $current_max > $real_max;
         verbose("Increasing box size, max is $current_max, min is $current_min\n");
 
         my $skip_sql = '';
@@ -766,6 +777,8 @@ Options:
                            The information for these is selected from the star
                            database, and the database is updated to reflect your
                            new searches.
+  --min-dist <n>         - Minimum distance to send excavators
+  --max-dist <n>         - Maximum distance to send excavators
   --dry-run              - Don't actually take any action, just report status and
                            what actions would have taken place.
 END
