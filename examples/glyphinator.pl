@@ -551,7 +551,7 @@ sub send_excavators {
         }
 
         for (@dests) {
-            my ($dest_name, $x, $y) = @$_;
+            my ($dest_name, $x, $y, $distance) = @$_;
 
             my $ships;
             my $ok = eval {
@@ -608,9 +608,9 @@ sub send_excavators {
             } @{$ships->{available}};
 
             if ($opts{'dry-run'}) {
-                output("Would have sent excavator from $planet to $dest_name.\n");
+                output("Would have sent excavator from $planet to $dest_name ($distance units).\n");
             } else {
-                output("Sending excavator from $planet to $dest_name...\n");
+                output("Sending excavator from $planet to $dest_name ($distance units)...\n");
                 my $launch_status = $port->send_ship($ex->{id}, {x => $x, y => $y});
 
                 if ($launch_status->{ship}->{date_arrives}) {
@@ -702,7 +702,7 @@ SQL
             my $dist = int(sqrt($row->{dist}));
             verbose("Selected destination $dest_name, which is $dist units away\n");
 
-            push @results, [$dest_name, $row->{x}, $row->{y}];
+            push @results, [$dest_name, $row->{x}, $row->{y}, $dist];
             push @$skip, $dest_name;
         }
     }
