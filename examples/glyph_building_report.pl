@@ -89,3 +89,14 @@ sub normalize_planet {
     return $planet_name;
 }
 
+
+sub usage {
+    print STDERR <<END;
+Usage: $0 [--config <file>] [--planet <name>]
+
+Displays the resource producing and storage glyph buildings on your colones.
+You can specify --planet to only inspect a subset of your planets.
+END
+
+    exit 1;
+}
