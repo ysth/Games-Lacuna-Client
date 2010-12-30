@@ -53,6 +53,7 @@ GetOptions(\%opts,
     'min-arch=i',
     'preferred-ore=s@',
     'send-excavators',
+    'max-excavators=i',
     'min-dist=i',
     'max-dist=i',
     'dry-run',
@@ -527,14 +528,16 @@ sub send_excavators {
         # them to an exclude list to simulate them being actually used.
         my %skip;
 
+        my $count = $opts{'max-excavators'} || $status->{ready}{$planet};
+
         my @dests = pick_destination($planet,
-            count    => $status->{ready}{$planet},
+            count    => $count,
             min_dist => $opts{'min-dist'} || undef,
             max_dist => $opts{'max-dist'} || undef,
         );
 
-        if (@dests < $status->{ready}{$planet}) {
-            diag("Couldn't fetch $status->{ready}{$planet} destinations from $planet!\n");
+        if (@dests < $count) {
+            diag("Couldn't fetch $count destinations from $planet!\n");
         }
 
         for (@dests) {
@@ -617,9 +620,12 @@ sub send_excavators {
                     warn Dumper $launch_status;
                 }
             }
+
+            $status->{ready}{$planet}--;
         }
 
-        delete $status->{ready}{$planet};
+        delete $status->{ready}{$planet}
+            if !$status->{ready}{$planet};
     }
 }
 
@@ -777,6 +783,7 @@ Options:
                            The information for these is selected from the star
                            database, and the database is updated to reflect your
                            new searches.
+  --max-excavators <n>   - Send at most this number of excavators from any colony
   --min-dist <n>         - Minimum distance to send excavators
   --max-dist <n>         - Maximum distance to send excavators
   --dry-run              - Don't actually take any action, just report status and
