@@ -198,7 +198,7 @@ sub get_status {
             # Make sure this yard is capable of building excavators
             my $buildable = $yard->get_buildable->{buildable};
 
-            unless($buildable->{excavator}->{can}) {
+            if (!$buildable->{excavator}->{can} and $buildable->{excavator}->{reason}->[0] eq '1013') {
                 verbose("$planet_name is not able to build excavators yet.\n");
                 next;
             }
