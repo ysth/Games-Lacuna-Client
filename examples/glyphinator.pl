@@ -645,6 +645,7 @@ sub pick_destination {
     my $base_x = $status->{planet_location}{$planet}{x};
     my $base_y = $status->{planet_location}{$planet}{y};
 
+    $args{max_dist} ||= 3000;
     my $real_min = $args{min_dist} ? int(sqrt($args{min_dist} * $args{min_dist} / 2)) : 0;
     my $real_max = $args{max_dist} ? int(sqrt($args{max_dist} * $args{max_dist} / 2)) : 0;
 
