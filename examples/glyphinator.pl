@@ -550,88 +550,97 @@ sub send_excavators {
             diag("Couldn't fetch $count destinations from $planet!\n");
         }
 
-        for (@dests) {
-            my ($dest_name, $x, $y, $distance) = @$_;
+        my $all_done;
+        while (!$all_done) {
+            my $need_more = 0;
 
-            my $ships;
-            my $ok = eval {
-                $ships = $port->get_ships_for($status->{planets}{$planet}, {x => $x, y => $y});
-                return 1;
-            };
-            unless ($ok) {
-                if (my $e = Exception::Class->caught('LacunaRPCException')) {
-                    if ($e->code eq '1002') {
-                        # Empty orbit, update db and try again
-                        output("$dest_name is an empty orbit, trying again...\n");
-                        mark_orbit_empty($x, $y);
+            for (@dests) {
+                my ($dest_name, $x, $y, $distance) = @$_;
 
-                        push @dests, pick_destination($planet,
-                            count    => 1,
-                            min_dist => $opts{'min-dist'} || undef,
-                            max_dist => $opts{'max-dist'} || undef,
-                            skip     => [keys %skip],
-                        );
-                        next;
+                my $ships;
+                my $ok = eval {
+                    $ships = $port->get_ships_for($status->{planets}{$planet}, {x => $x, y => $y});
+                    return 1;
+                };
+                unless ($ok) {
+                    if (my $e = Exception::Class->caught('LacunaRPCException')) {
+                        if ($e->code eq '1002') {
+                            # Empty orbit, update db and try again
+                            output("$dest_name is an empty orbit, trying again...\n");
+                            mark_orbit_empty($x, $y);
+
+                            $need_more++;
+                            next;
+                        }
+                    }
+                    else {
+                        my $e = Exception::Class->caught();
+                        ref $e ? $e->rethrow : die $e;
                     }
                 }
-                else {
-                    my $e = Exception::Class->caught();
-                    ref $e ? $e->rethrow : die $e;
+
+                unless (grep { $_->{type} eq 'excavator' } @{$ships->{available}}) {
+                    if (grep { $_->{reason}[0] eq '1010' } @{$ships->{unavailable}}) {
+                        # This will set the "last_excavated" time to now, which is not
+                        # the case, but it's as good as we have.  It means that some bodies
+                        # might take longer to get re-dug but whatever, there are others
+                        output("$dest_name was unavailable due to recent search, trying again...\n");
+                        update_last_sent($x, $y);
+                    } else {
+                        diag("Unknown error sending excavator from $planet to $dest_name!\n");
+                        next PLANET;
+                    }
+
+                    $need_more++;
+                    next;
                 }
+
+                $skip{$dest_name}++;
+
+                my $ex = first {
+                    $_->{type} eq 'excavator'
+                } @{$ships->{available}};
+
+                if ($opts{'dry-run'}) {
+                    output("Would have sent excavator from $planet to $dest_name ($distance units).\n");
+                } else {
+                    output("Sending excavator from $planet to $dest_name ($distance units)...\n");
+                    my $launch_status = $port->send_ship($ex->{id}, {x => $x, y => $y});
+
+                    if ($launch_status->{ship}->{date_arrives}) {
+                        push @{$status->{flying}},
+                            {
+                                planet      => $planet,
+                                destination => $launch_status->{ship}{to}{name},
+                                arrives     => str2time(
+                                    map { s!^(\d+)\s+(\d+)\s+!$2/$1/!; $_ }
+                                    $launch_status->{ship}{date_arrives}
+                                ),
+                            };
+
+                            update_last_sent($x, $y);
+                    } else {
+                        diag("Error sending excavator to $dest_name!\n");
+                        warn Dumper $launch_status;
+                    }
+                }
+
+                $status->{ready}{$planet}--;
             }
 
-            unless (grep { $_->{type} eq 'excavator' } @{$ships->{available}}) {
-                if (grep { $_->{reason}[0] eq '1010' } @{$ships->{unavailable}}) {
-                    # This will set the "last_excavated" time to now, which is not
-                    # the case, but it's as good as we have.  It means that some bodies
-                    # might take longer to get re-dug but whatever, there are others
-                    output("$dest_name was unavailable due to recent search, trying again...\n");
-                    update_last_sent($x, $y);
-                } else {
-                    diag("Unknown error sending excavator from $planet to $dest_name!\n");
-                    next PLANET;
-                }
-
-                push @dests, pick_destination($planet,
-                    count    => 1,
+            # Defer looking up more until we've finished processing our
+            # current queue, otherwise we end up re-fetching ones we haven't
+            # actually tried yet and get duplicates
+            if ($need_more) {
+                @dests = pick_destination($planet,
+                    count    => $need_more,
                     min_dist => $opts{'min-dist'} || undef,
                     max_dist => $opts{'max-dist'} || undef,
                     skip     => [keys %skip],
                 );
-                next;
-            }
-
-            $skip{$dest_name}++;
-
-            my $ex = first {
-                $_->{type} eq 'excavator'
-            } @{$ships->{available}};
-
-            if ($opts{'dry-run'}) {
-                output("Would have sent excavator from $planet to $dest_name ($distance units).\n");
             } else {
-                output("Sending excavator from $planet to $dest_name ($distance units)...\n");
-                my $launch_status = $port->send_ship($ex->{id}, {x => $x, y => $y});
-
-                if ($launch_status->{ship}->{date_arrives}) {
-                    push @{$status->{flying}},
-                        {
-                            planet      => $planet,
-                            destination => $launch_status->{ship}{to}{name},
-                            arrives     => str2time(
-                                map { s!^(\d+)\s+(\d+)\s+!$2/$1/!; $_ }
-                                $launch_status->{ship}{date_arrives}
-                            ),
-                        };
-
-                        update_last_sent($x, $y);
-                } else {
-                    diag("Error sending excavator to $dest_name!\n");
-                    warn Dumper $launch_status;
-                }
+                $all_done = 1;
             }
-
-            $status->{ready}{$planet}--;
         }
 
         delete $status->{ready}{$planet}
