@@ -82,6 +82,7 @@ GetOptions(\%opts,
     'safe-zone-ok'            => $batch_opt_cb,
     'inhabited-ok'            => $batch_opt_cb,
     'furthest-first|furthest' => $batch_opt_cb,
+    'random-dist|random'      => $batch_opt_cb,
 
     # Allow this to run in an infinate glyph-sucking loop.  Value is
     # minutes between cycles (default 360)
@@ -911,7 +912,13 @@ sub pick_destination {
 
     my @results;
     while (@results < $count and ($furthest ? $current_min > 0 : $current_max < $box_max)) {
-        if ($furthest) {
+        if ($batch->{'random-dist'}) {
+            # Use full range for random searches
+            $current_min = $box_min;
+            $current_max = $box_max;
+            verbose("Setting to full range for random search\n");
+        }
+        elsif ($furthest) {
             $current_max = $current_min;
             $current_min -= 100;
             $current_min = 0 if $current_min < 0;
@@ -934,8 +941,10 @@ sub pick_destination {
         my $inhabited = $batch->{'inhabited-ok'} ? '' : q{and o.empire_id is null};
         my $zone      = $batch->{'zone'} ? 'and zone = ?' : '';
         my $order     = $batch->{'furthest-first'} ? 'desc' : 'asc';
+        my $rand      = $batch->{'random-dist'} ? "+ random()" : '';
         my $find_dest = $star_db->prepare(<<SQL);
-select   s.name, o.orbit, o.x, o.y, s.zone, (o.x - ?) * (o.x - ?) + (o.y - ?) * (o.y - ?) as dist
+select   s.name, o.orbit, o.x, o.y, s.zone, (o.x - ?) * (o.x - ?) + (o.y - ?) * (o.y - ?) as dist,
+         (((o.x - ?) * (o.x - ?) + (o.y - ?) * (o.y - ?)) $rand) as sort_dist
 from     orbitals o
 join     stars s on o.star_id = s.id
 where    (type in ('habitable planet', 'asteroid', 'gas giant') or type is null)
@@ -949,12 +958,13 @@ $safe_zone
 $inhabited
 $zone
 $inner_box
-order by dist $order
+order by sort_dist $order
 limit    $count
 SQL
 
         # select columns,x/y betweens
         my @vals = (
+            $base_x, $base_x, $base_y, $base_y,
             $base_x, $base_x, $base_y, $base_y,
             $base_x - $current_max,
             $base_x + $current_max,
