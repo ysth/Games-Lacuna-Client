@@ -29,7 +29,7 @@ use feature ':5.10';
 
 use DBI;
 use FindBin;
-use List::Util qw(first);
+use List::Util qw(first max);
 use Date::Parse qw(str2time);
 use Math::Round qw(round);
 use Getopt::Long;
@@ -538,7 +538,9 @@ sub send_excavators {
         # them to an exclude list to simulate them being actually used.
         my %skip;
 
-        my $count = $opts{'max-excavators'} || $status->{ready}{$planet};
+        my $count = $opts{'max-excavators'} ?
+            max($opts{'max-excavators'}, $status->{ready}{$planet})
+            : $status->{ready}{$planet};
 
         my @dests = pick_destination($planet,
             count    => $count,
