@@ -63,8 +63,8 @@ my %normalized_types = (
 if ($opts{type}) {
     # normalize type
     for (@{$opts{type}}) {
-        $build_types{$normalized_types{$_}} = 1
-            if defined $normalized_types{$_};
+        $build_types{lc($normalized_types{$_})} = 1
+            if defined lc($normalized_types{$_});
     }
 }
 
