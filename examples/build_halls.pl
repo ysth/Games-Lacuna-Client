@@ -154,3 +154,26 @@ sub output {
     return if $opts{q};
     print @_;
 }
+
+sub usage {
+    print STDERR <<END;
+Usage: $0 [options]
+
+This will assemble Halls of Vrbansk recipes wherever there are enough
+glyphs in the same location to do so.  By default, it will not use
+the last of any particular type of glyph.
+
+Options:
+
+  --verbose       - Print more output
+  --quiet         - Only output errors
+  --config <file> - GLC config, defaults to lacuna.yml
+  --max <n>       - Build at most <n> of any recipe
+  --planet <name> - Build only on the specified planet(s)
+  --use-last      - Use the last of any glyph if necessary
+  --dry-run       - Print what would have been built, but don't do it
+  --type <type>   - Specify a particular recipe to build (1-5 or A-E)
+END
+
+    exit 1;
+}
