@@ -29,7 +29,7 @@ use feature ':5.10';
 
 use DBI;
 use FindBin;
-use List::Util qw(first max);
+use List::Util qw(first min);
 use Date::Parse qw(str2time);
 use Math::Round qw(round);
 use Getopt::Long;
