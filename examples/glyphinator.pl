@@ -56,6 +56,7 @@ GetOptions(\%opts,
     'max-excavators=i',
     'min-dist=i',
     'max-dist=i',
+    'furthest-first',
     'dry-run',
 );
 
@@ -663,21 +664,34 @@ sub pick_destination {
     my $box_max = int(sqrt($args{max_dist} * $args{max_dist} / 2));
 
     my $count       = $args{count} || 1;
+    my $current_min = $box_max;
     my $current_max = $box_min;
     my $skip        = $args{skip} || [];
 
-    my @results;
-    while (@results < $count and $current_max < $box_max) {
-        my $current_min = $current_max;
-        $current_max += 100;
-        $current_max = $box_max if $current_max > $box_max;
-        verbose("Increasing box size, max is $current_max, min is $current_min\n");
+    my $furthest = $opts{'furthest-first'};
 
+    my @results;
+    while (@results < $count and ($furthest ? $current_min > 0 : $current_max < $box_max)) {
+        if ($furthest) {
+            $current_max = $current_min;
+            $current_min -= 100;
+            $current_min = 0 if $current_min < 0;
+            verbose("Decreasing box size, max is $current_max, min is $current_min\n");
+        } else {
+            $current_min = $current_max;
+            $current_max += 100;
+            $current_max = $box_max if $current_max > $box_max;
+            verbose("Increasing box size, max is $current_max, min is $current_min\n");
+        }
+
+        # This would be better using SQLite's R*Tree support, but DBD::SQLite doesn't
+        # support that yet, so we can't
         my $skip_sql = '';
         if (@$skip) {
             $skip_sql = "and s.name || ' ' || o.orbit not in (" . join(',',map { '?' } 1..@$skip) . ")";
         }
         my $inner_box = $current_min > 0 ? 'and not (o.x between ? and ? and o.y between ? and ?)' : '';
+        my $order = $opts{'furthest-first'} ? 'desc' : 'asc';
         my $find_dest = $star_db->prepare(<<SQL);
 select   s.name, o.orbit, o.x, o.y, (o.x - ?) * (o.x - ?) + (o.y - ?) * (o.y - ?) as dist
 from     orbitals o
@@ -688,7 +702,7 @@ and      o.x between ? and ?
 and      o.y between ? and ?
 $inner_box
 $skip_sql
-order by dist asc
+order by dist $order
 limit    $count
 SQL
 
@@ -809,6 +823,7 @@ Options:
   --max-excavators <n>   - Send at most this number of excavators from any colony
   --min-dist <n>         - Minimum distance to send excavators
   --max-dist <n>         - Maximum distance to send excavators
+  --furthest-first       - Select the furthest away rather than the closest
   --dry-run              - Don't actually take any action, just report status and
                            what actions would have taken place.
 END
