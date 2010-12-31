@@ -26,6 +26,7 @@ GetOptions(\%opts,
     'create-db',
     'merge-db=s',
     'planet=s@',
+    'no-fetch',
 );
 
 usage() if $opts{h};
@@ -57,6 +58,7 @@ if (-f $db_file) {
         die "No star database found.  Specify it with --db or use --create-db to create it.\n";
     }
 }
+$star_db->{AutoCommit} = 0;
 
 if ($opts{'merge-db'}) {
     my $merge_db = DBI->connect("dbi:SQLite:$opts{'merge-db'}")
@@ -86,55 +88,64 @@ if ($opts{'merge-db'}) {
     }
 }
 
-my $empire = $glc->empire->get_status->{empire};
+unless ($opts{'no-fetch'}) {
+    my $empire = $glc->empire->get_status->{empire};
 
-# reverse hash, to key by name instead of id
-my %planets = map { $empire->{planets}{$_}, $_ } keys %{$empire->{planets}};
+    # reverse hash, to key by name instead of id
+    my %planets = map { $empire->{planets}{$_}, $_ } keys %{$empire->{planets}};
 
-# Scan each planet
-for my $planet_name (keys %planets) {
-    if (keys %do_planets) {
-        next unless $do_planets{normalize_planet($planet_name)};
-    }
+    # Scan each planet
+    for my $planet_name (keys %planets) {
+        if (keys %do_planets) {
+            next unless $do_planets{normalize_planet($planet_name)};
+        }
 
-    verbose("Inspecting $planet_name\n");
+        verbose("Inspecting $planet_name\n");
 
-    # Load planet data
-    my $planet    = $glc->body(id => $planets{$planet_name});
-    my $result    = $planet->get_buildings;
-    my $buildings = $result->{buildings};
+        # Load planet data
+        my $planet    = $glc->body(id => $planets{$planet_name});
+        my $result    = $planet->get_buildings;
+        my $buildings = $result->{buildings};
 
-    my $obs = find_observatory($buildings);
-    my $page = 1;
-    my $done;
-    while (!$done) {
-        $done = 1;
+        my $obs = find_observatory($buildings);
+        next unless $obs;
 
-        my $stars = $obs->get_probed_stars;
-        for my $star (@{$stars->{stars}}) {
-            if (! star_exists($star->{x}, $star->{y})) {
-                insert_star(@{$star}{qw/id name x y color/});
-            }
+        my $page = 1;
+        my $done;
+        while (!$done) {
+            $done = 1;
 
-            if ($star->{bodies} and @{$star->{bodies}}) {
-                for my $body (@{$star->{bodies}}) {
-                    if (my $db_entry = orbital_exists($body->{x}, $body->{y})) {
-                        if (!$db_entry->{type} or $db_entry->{type} ne $body->{type}) {
-                            update_orbital_type($body->{x}, $body->{y}, $body->{type});
+            my $stars = $obs->get_probed_stars($page);
+            for my $star (@{$stars->{stars}}) {
+                if (! star_exists($star->{x}, $star->{y})) {
+                    insert_star(@{$star}{qw/id name x y color/});
+                }
+
+                if ($star->{bodies} and @{$star->{bodies}}) {
+                    for my $body (@{$star->{bodies}}) {
+                        if (my $db_entry = orbital_exists($body->{x}, $body->{y})) {
+                            if (!$db_entry->{type} or $db_entry->{type} ne $body->{type}) {
+                                update_orbital_type($body->{x}, $body->{y}, $body->{type});
+                            }
+                        } else {
+                            insert_orbital(@{$body}{qw/id star_id orbit x y type/});
                         }
-                    } else {
-                        insert_orbital(@{$body}{qw/id star_id orbit x y type/});
                     }
                 }
             }
-        }
 
-        if ($stars->{star_count} > $page * 25) {
-            $done = 0;
-            $page++;
+            if ($stars->{star_count} > $page * 25) {
+                $done = 0;
+                $page++;
+            }
         }
     }
 }
+
+$star_db->commit;
+
+undef $glc;
+exit 0;
 
 {
     my $check_star;
@@ -256,6 +267,7 @@ Options:
   --db <file>            - Specify a star database, normally stars.db.
   --create-db            - Create the star database and initialize the schema.
   --merge-db <file>      - Copy missing data from another database file
+  --no-fetch             - Don't fetch probe data, only merge databases
   --planet <name>        - Specify a planet to process.  This option can be
                            passed multiple times to indicate several planets.
                            If this is not specified, all relevant colonies will
