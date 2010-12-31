@@ -539,7 +539,7 @@ sub send_excavators {
         my %skip;
 
         my $count = $opts{'max-excavators'} ?
-            max($opts{'max-excavators'}, $status->{ready}{$planet})
+            min($opts{'max-excavators'}, $status->{ready}{$planet})
             : $status->{ready}{$planet};
 
         my @dests = pick_destination($planet,
