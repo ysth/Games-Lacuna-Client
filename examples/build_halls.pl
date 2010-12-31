@@ -1,7 +1,6 @@
 #!/usr/bin/perl
 #
-# 22:32 <vaticide> yeah, what I started with last night is a pretty safe option.
-# built all halls first where it wouldn't exhaust fully any glyph type
+# Build Halls of Vrbansk recipes, wherever they can be assembled
 #
 
 use strict;
