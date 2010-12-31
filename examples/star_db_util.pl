@@ -175,7 +175,7 @@ exit 0;
     sub orbital_exists {
         my ($x, $y) = @_;
 
-        $check_orbital = $star_db->prepare('select * from orbitals where x = ? and y = ?');
+        $check_orbital ||= $star_db->prepare('select * from orbitals where x = ? and y = ?');
         $check_orbital->execute($x, $y);
         return $check_orbital->fetchrow_hashref;
     }
@@ -187,7 +187,7 @@ exit 0;
         my ($id, $star_id, $orbit, $x, $y, $type) = @_;
 
         print "Inserting orbital for star $star_id orbit $orbit at $x, $y\n";
-        $insert_orbital = $star_db->prepare('insert into orbitals (body_id, star_id, orbit, x, y, type) values (?,?,?,?,?,?)');
+        $insert_orbital ||= $star_db->prepare('insert into orbitals (body_id, star_id, orbit, x, y, type) values (?,?,?,?,?,?)');
         $insert_orbital->execute($id, $star_id, $orbit, $x, $y, $type)
             or die "Can't insert orbital: " . $insert_orbital->errstr;
     }
@@ -199,8 +199,8 @@ exit 0;
         my ($x, $y, $type) = @_;
 
         print "Updating type for orbital at $x, $y to $type\n";
-        $update_orbital_type = $star_db->prepare('update orbitals set type = ? where x = ? and y = ?');
-        $update_orbital_type->execute($x, $y, $type)
+        $update_orbital_type ||= $star_db->prepare('update orbitals set type = ? where x = ? and y = ?');
+        $update_orbital_type->execute($type, $x, $y)
             or die "Can't update orbital: " . $update_orbital_type->errstr;
     }
 }
