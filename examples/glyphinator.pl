@@ -657,19 +657,20 @@ sub pick_destination {
     my $base_y = $status->{planet_location}{$planet}{y};
 
     $args{max_dist} ||= 3000;
-    my $real_min = $args{min_dist} ? int(sqrt($args{min_dist} * $args{min_dist} / 2)) : 0;
-    my $real_max = $args{max_dist} ? int(sqrt($args{max_dist} * $args{max_dist} / 2)) : 0;
+
+    # Compute box size based on specified max hypotenuse
+    my $box_min = $args{min_dist} ? int(sqrt($args{min_dist} * $args{min_dist} / 2)) : 0;
+    my $box_max = int(sqrt($args{max_dist} * $args{max_dist} / 2));
 
     my $count       = $args{count} || 1;
-    my $current_max = $real_min;
+    my $current_max = $box_min;
     my $skip        = $args{skip} || [];
 
     my @results;
-    while (@results < $count and (!$real_max or $current_max < $real_max)) {
+    while (@results < $count and $current_max < $box_max) {
         my $current_min = $current_max;
         $current_max += 100;
-        $current_max = $real_max
-            if $real_max and $current_max > $real_max;
+        $current_max = $box_max if $current_max > $box_max;
         verbose("Increasing box size, max is $current_max, min is $current_min\n");
 
         my $skip_sql = '';
@@ -681,7 +682,7 @@ sub pick_destination {
 select   s.name, o.orbit, o.x, o.y, (o.x - ?) * (o.x - ?) + (o.y - ?) * (o.y - ?) as dist
 from     orbitals o
 join     stars s on o.star_id = s.id
-where    (type in ('planet', 'asteroid') or type is null)
+where    (type in ('habitable planet', 'asteroid', 'gas giant') or type is null)
 and      (last_excavated is null or date(last_excavated) < date('now', '-30 days'))
 and      o.x between ? and ?
 and      o.y between ? and ?
