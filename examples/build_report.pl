@@ -17,12 +17,12 @@ GetOptions(
 
 my $cfg_file = shift(@ARGV) || 'lacuna.yml';
 unless ( $cfg_file and -e $cfg_file ) {
-	die "Did not provide a config file";
+    die "Did not provide a config file";
 }
 
 my $client = Games::Lacuna::Client->new(
-	cfg_file => $cfg_file,
-	# debug    => 1,
+    cfg_file => $cfg_file,
+    # debug    => 1,
 );
 
 my @types = qw( food ore water energy waste );
@@ -41,25 +41,27 @@ foreach my $planet_id ( sort keys %$planets ) {
     my $planet    = $client->body( id => $planet_id );
     my $result    = $planet->get_buildings;
     my $buildings = $result->{buildings};
-    
+
     my @build;
-    
+
     for my $building_id ( sort keys %$buildings ) {
         push @build, $buildings->{$building_id}
             if $buildings->{$building_id}{pending_build};
     }
-    
+
     next if !@build;
-    
+
     print "$name\n";
     print "=" x length $name;
     print "\n";
-    
-    for my $building (@build) {
+
+    for my $building (
+            sort { $a->{pending_build}{seconds_remaining} <=> $b->{pending_build}{seconds_remaining} }
+            @build) {
         printf "%s: %s\n",
             $building->{name},
-            $building->{pending_build}{end};
+            scalar localtime(time + $building->{pending_build}{seconds_remaining})
     }
-    
+
     print "\n";
 }
