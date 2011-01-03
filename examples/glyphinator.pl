@@ -657,11 +657,13 @@ sub pick_destination {
     my $base_x = $status->{planet_location}{$planet}{x};
     my $base_y = $status->{planet_location}{$planet}{y};
 
-    $args{max_dist} ||= 3000;
-
     # Compute box size based on specified max hypotenuse
+    $args{min_dist} ||= 0;
+    $args{max_dist} ||= 3000;
     my $box_min = $args{min_dist} ? int(sqrt($args{min_dist} * $args{min_dist} / 2)) : 0;
     my $box_max = int(sqrt($args{max_dist} * $args{max_dist} / 2));
+    my $max_squared = $args{max_dist} * $args{max_dist};
+    my $min_squared = $args{min_dist} * $args{min_dist};
 
     my $count       = $args{count} || 1;
     my $current_min = $box_max;
@@ -700,6 +702,8 @@ where    (type in ('habitable planet', 'asteroid', 'gas giant') or type is null)
 and      (last_excavated is null or date(last_excavated) < date('now', '-30 days'))
 and      o.x between ? and ?
 and      o.y between ? and ?
+and      dist <= $max_squared
+and      dist >= $min_squared
 $inner_box
 $skip_sql
 order by dist $order
