@@ -677,7 +677,7 @@ sub pick_destination {
         if (@$skip) {
             $skip_sql = "and s.name || ' ' || o.orbit not in (" . join(',',map { '?' } 1..@$skip) . ")";
         }
-        my $inner_box = $current_min > 0 ? 'and o.x not between ? and ? and o.y not between ? and ?' : '';
+        my $inner_box = $current_min > 0 ? 'and not (o.x between ? and ? and o.y between ? and ?)' : '';
         my $find_dest = $star_db->prepare(<<SQL);
 select   s.name, o.orbit, o.x, o.y, (o.x - ?) * (o.x - ?) + (o.y - ?) * (o.y - ?) as dist
 from     orbitals o
