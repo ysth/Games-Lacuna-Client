@@ -200,7 +200,7 @@ sub get_status {
             my $buildable = $yard->get_buildable->{buildable};
 
             if (!$buildable->{excavator}->{can} and $buildable->{excavator}->{reason}->[0] eq '1013') {
-                verbose("$planet_name is not able to build excavators yet.\n");
+                verbose("This shipyard on $planet_name is not able to build excavators yet.\n");
                 next;
             }
 
@@ -444,7 +444,9 @@ sub find_shipyards {
     # Find the Shipyards
     my @yard_ids = grep {
             $buildings->{$_}->{name} eq 'Shipyard'
-    } keys %$buildings;
+    }
+    grep { $buildings->{$_}->{level} > 0 }
+    keys %$buildings;
 
     return if not @yard_ids;
     return map { $glc->building(id => $_, type => 'Shipyard') } @yard_ids;
@@ -456,7 +458,9 @@ sub find_spaceport {
     # Find a Spaceport
     my $port_id = first {
             $buildings->{$_}->{name} eq 'Space Port'
-    } keys %$buildings;
+    }
+    grep { $buildings->{$_}->{level} > 0 }
+    keys %$buildings;
 
     return if not $port_id;
     return $glc->building(id => $port_id, type => 'Spaceport');
