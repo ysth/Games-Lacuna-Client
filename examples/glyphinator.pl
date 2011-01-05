@@ -29,7 +29,7 @@ use feature ':5.10';
 
 use DBI;
 use FindBin;
-use List::Util qw(first min);
+use List::Util qw(first min sum);
 use Date::Parse qw(str2time);
 use Math::Round qw(round);
 use Getopt::Long;
@@ -167,7 +167,16 @@ sub get_status {
             $status->{spaceports}{$planet_name} = $spaceport;
 
             # How many in flight?  When arrives?
-            my $traveling = $spaceport->view_ships_travelling;
+            my $page = 1;
+            my (@ships, $ship_count);
+            while (!defined $ship_count or @ships < $ship_count) {
+                my $page_of_ships = $spaceport->view_all_ships($page);
+                $ship_count ||= $page_of_ships->{number_of_ships};
+                push @ships, @{$page_of_ships->{ships}};
+                $page++;
+            }
+            my @excavators = grep { $_->{type} eq 'excavator' } @ships;
+
             push @{$status->{flying}},
                 map {
                     {
@@ -179,63 +188,60 @@ sub get_status {
                         ),
                     }
                 }
-                grep { $_->{type} eq 'excavator' }
-                @{$traveling->{ships_travelling}};
+                grep { $_->{task} eq 'Travelling' }
+                @excavators;
 
             # How many ready now?
-            my $sp_status = $spaceport->view;
-            $status->{ready}{$planet_name} += $sp_status->{'docked_ships'}{'excavator'} || 0;
+            $status->{ready}{$planet_name} = grep { $_->{task} eq 'Docked' } @excavators;
+            verbose("$status->{ready}{$planet_name} excavators ready to launch\n");
 
             # How many open spots?
-            $status->{open_docks}{$planet_name} = $sp_status->{docks_available} || 0;
+            my $total_docks = get_spaceport_dock_count($buildings);
+            $status->{open_docks}{$planet_name} = $total_docks - @ships;
+            verbose("$status->{open_docks}{$planet_name} available docks\n");
         } else {
             verbose("No spaceport on $planet_name\n");
         }
 
-        my @shipyards = find_shipyards($buildings);
-        verbose("No shipyards on $planet_name\n") unless @shipyards;
-        for my $yard (@shipyards) {
-            verbose("Found a shipyard on $planet_name\n");
-            # Make sure this yard is capable of building excavators
-            my $buildable = $yard->get_buildable->{buildable};
+        if ($status->{archlevel}{$planet_name} >= 15) {
+            my @shipyards = find_shipyards($buildings);
+            verbose("No shipyards on $planet_name\n") unless @shipyards;
+            for my $yard (@shipyards) {
+                verbose("Found a shipyard on $planet_name\n");
 
-            if (!$buildable->{excavator}->{can} and $buildable->{excavator}->{reason}->[0] eq '1013') {
-                verbose("This shipyard on $planet_name is not able to build excavators yet.\n");
-                next;
-            }
+                # Keep a record of any planet that could be building excavators, but isn't
+                $status->{not_building}{$planet_name} = 1
+                    unless exists $status->{not_building}{$planet_name};
 
-            # Keep a record of any planet that could be building excavators, but isn't
-            $status->{not_building}{$planet_name} = 1
-                unless exists $status->{not_building}{$planet_name};
-
-            # How long to build one in this shipyard?
-            my $build_time = $buildable->{excavator}->{cost}->{seconds};
-            verbose("Excavators in this shipyard take " . format_time_delta_full($build_time) . "\n");
-
-            # How many building?
-            my $work_queue = $yard->view_build_queue;
-            my @building =
-                map {
-                    {
-                        finished => str2time(
-                            map { s!^(\d+)\s+(\d+)\s+!$2/$1/!; $_ }
-                            $_->{date_completed}
-                        ),
-                    }
+                # How many building?
+                my $page = 1;
+                my (@ships_building, $building_count);
+                while (!defined $building_count or @ships_building < $building_count) {
+                    my $work_queue = $yard->view_build_queue($page);
+                    $building_count ||= $work_queue->{number_of_ships_building};
+                    push @ships_building, @{$work_queue->{ships_building}};
+                    $page++;
                 }
-                grep { $_->{type} eq 'excavator' }
-                @{$work_queue->{ships_building}};
+                my @excavators_building =
+                    map {
+                        {
+                            finished => str2time(
+                                map { s!^(\d+)\s+(\d+)\s+!$2/$1/!; $_ }
+                                $_->{date_completed}
+                            ),
+                        }
+                    }
+                    grep { $_->{type} eq 'excavator' }
+                    @ships_building;
 
-            if (@building) {
-                push @{$status->{building}{$planet_name}}, @building;
-                $status->{not_building}{$planet_name} = 0;
+                if (@excavators_building) {
+                    verbose(scalar @excavators_building . " excavators building at this yard\n");
+                    push @{$status->{building}{$planet_name}}, @excavators_building;
+                    $status->{not_building}{$planet_name} = 0;
+                }
             }
-
-            # What's the queue time and time to build another?
-            $status->{queue_end}{$planet_name}{$yard->{building_id}} =
-                $work_queue->{building}{work}{seconds_remaining};
-            $status->{additional_excavator_end}{$planet_name}{$yard->{building_id}} =
-                $work_queue->{building}{work}{seconds_remaining} + $build_time;
+        } else {
+            verbose("$planet_name can't build excavators, skipping shipyards\n")
         }
     }
 }
@@ -464,6 +470,18 @@ sub find_spaceport {
 
     return if not $port_id;
     return $glc->building(id => $port_id, type => 'Spaceport');
+}
+
+sub get_spaceport_dock_count {
+    my ($buildings) = @_;
+
+    my $level_sum = sum(
+        map  { $buildings->{$_}->{level} }
+        grep { $buildings->{$_}->{name} eq 'Space Port' }
+        keys %$buildings
+    );
+
+    return $level_sum * 2;
 }
 
 ## Arch digs ##
