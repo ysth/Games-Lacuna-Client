@@ -379,6 +379,10 @@ sub upgrade_star_db {
             'alter table stars add zone text',
         ],
         [
+            undef,
+            q{update stars set zone = cast(x/250 as text) || '|' || cast(y/250 as text) where zone is null},
+        ],
+        [
             'select name from orbitals limit 1',
             'alter table orbitals add name text',
         ],
@@ -405,6 +409,7 @@ sub check_and_upgrade {
 
     # Test each new element and migrate as necessary
     my $ok = eval {
+        return 0 unless defined $check;
         $star_db->do($check);
         return 1;
     };
