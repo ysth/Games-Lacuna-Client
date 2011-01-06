@@ -58,6 +58,7 @@ GetOptions(\%opts,
     'max-dist=i',
     'furthest-first|furthest',
     'dry-run|dry',
+    'full-times',
 );
 
 usage() if $opts{h};
@@ -304,8 +305,8 @@ END
                 my $last = $sorted[$#sorted];
 
                 output("    ",scalar(@sorted), " excavators building on $planet, ",
-                    "first done in ", format_time($first->{finished}),
-                    ", last done in ", format_time($last->{finished}), "\n");
+                    "first done in ", format_time($first->{finished}, $opts{'full-times'}),
+                    ", last done in ", format_time($last->{finished}, $opts{'full-times'}), "\n");
 
             } elsif ($status->{not_building}{$planet}) {
                 output("$planet is not currently building any excavators!  It has "
@@ -331,7 +332,7 @@ END
     }
     @events =
         sort { $a->{epoch} <=> $b->{epoch} }
-        map  { $_->{when} = format_time($_->{epoch}); $_ }
+        map  { $_->{when} = format_time($_->{epoch}, $opts{'full-times'}); $_ }
         @events;
 
     if (@events) {
@@ -407,9 +408,9 @@ sub format_time_delta_full {
 }
 
 sub format_time {
-    my $time = shift;
+    my ($time, $full) = @_;
     my $delta = $time - time();
-    return format_time_delta($delta);
+    return $full ? format_time_delta_full($delta) : format_time_delta($delta);
 }
 
 sub pluralize {
@@ -858,6 +859,7 @@ Options:
   --furthest-first       - Select the furthest away rather than the closest
   --dry-run              - Don't actually take any action, just report status and
                            what actions would have taken place.
+  --full-times           - Specify timestamps in full precision instead of rounded
 END
     exit 1;
 }
