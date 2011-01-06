@@ -56,6 +56,8 @@ GetOptions(\%opts,
     'max-excavators|max=i',
     'min-dist=i',
     'max-dist=i',
+    'safe-zone-ok',
+    'inhabited-ok',
     'furthest-first|furthest',
     'dry-run|dry',
     'full-times',
@@ -78,6 +80,8 @@ my $star_db;
 if (-f $db_file) {
     $star_db = DBI->connect("dbi:SQLite:$db_file")
         or die "Can't open star database $db_file: $DBI::errstr\n";
+    $star_db->{RaiseError} = 1;
+    $star_db->{PrintError} = 0;
 } else {
     if ($opts{'create-db'}) {
         $star_db = DBI->connect("dbi:SQLite:$db_file")
@@ -99,6 +103,19 @@ if ($star_db) {
     unless ($cnt) {
         diag("Star database is empty!\n");
         $star_db = undef;
+    }
+
+    my $ok = eval {
+        $star_db->do('select zone from stars limit 1');
+        return 1;
+    };
+    unless ($ok) {
+        my $e = $@;
+        if ($e =~ /no such column/) {
+            die "Database needs an upgrade, please run star_db_util.pl --upgrade\n";
+        } else {
+            die $e;
+        }
     }
 }
 
@@ -587,7 +604,7 @@ sub send_excavators {
             my $need_more = 0;
 
             for (@dests) {
-                my ($dest_name, $x, $y, $distance) = @$_;
+                my ($dest_name, $x, $y, $distance, $zone) = @$_;
 
                 my $ships;
                 my $ok = eval {
@@ -634,9 +651,9 @@ sub send_excavators {
                 } @{$ships->{available}};
 
                 if ($opts{'dry-run'}) {
-                    output("Would have sent excavator from $planet to $dest_name ($distance units).\n");
+                    output("Would have sent excavator from $planet to $dest_name ($distance units, zone $zone).\n");
                 } else {
-                    output("Sending excavator from $planet to $dest_name ($distance units)...\n");
+                    output("Sending excavator from $planet to $dest_name ($distance units, zone $zone)...\n");
                     my $launch_status = $port->send_ship($ex->{id}, {x => $x, y => $y});
 
                     if ($launch_status->{ship}->{date_arrives}) {
@@ -722,13 +739,17 @@ sub pick_destination {
             $skip_sql = "and s.name || ' ' || o.orbit not in (" . join(',',map { '?' } 1..@$skip) . ")";
         }
         my $inner_box = $current_min > 0 ? 'and not (o.x between ? and ? and o.y between ? and ?)' : '';
-        my $order = $opts{'furthest-first'} ? 'desc' : 'asc';
+        my $safe_zone = $opts{'safe-zone-ok'} ? '' : q{and (s.zone is null or s.zone != '-3|0')};
+        my $inhabited = $opts{'inhabited-ok'} ? '' : q{and o.empire_id is null};
+        my $order     = $opts{'furthest-first'} ? 'desc' : 'asc';
         my $find_dest = $star_db->prepare(<<SQL);
-select   s.name, o.orbit, o.x, o.y, (o.x - ?) * (o.x - ?) + (o.y - ?) * (o.y - ?) as dist
+select   s.name, o.orbit, o.x, o.y, s.zone, (o.x - ?) * (o.x - ?) + (o.y - ?) * (o.y - ?) as dist
 from     orbitals o
 join     stars s on o.star_id = s.id
 where    (type in ('habitable planet', 'asteroid', 'gas giant') or type is null)
 and      (last_excavated is null or date(last_excavated) < date('now', '-30 days'))
+$safe_zone
+$inhabited
 and      o.x between ? and ?
 and      o.y between ? and ?
 and      dist <= $max_squared
@@ -762,7 +783,13 @@ SQL
             my $dist = int(sqrt($row->{dist}));
             verbose("Selected destination $dest_name, which is $dist units away\n");
 
-            push @results, [$dest_name, $row->{x}, $row->{y}, $dist];
+            my $zone = $row->{zone};
+            unless ($zone) {
+                my $x_zone = int($row->{x} / 250);
+                my $y_zone = int($row->{y} / 250);
+                $zone = "$x_zone|$y_zone";
+            }
+            push @results, [$dest_name, $row->{x}, $row->{y}, $dist, $zone];
             push @$skip, $dest_name;
         }
     }
@@ -856,6 +883,8 @@ Options:
   --max-excavators <n>   - Send at most this number of excavators from any colony
   --min-dist <n>         - Minimum distance to send excavators
   --max-dist <n>         - Maximum distance to send excavators
+  --safe-zone-ok         - Ok to send excavators to -3|0, the neutral zone
+  --inhabited-ok         - Ok to send excavators to inhabited planets
   --furthest-first       - Select the furthest away rather than the closest
   --dry-run              - Don't actually take any action, just report status and
                            what actions would have taken place.
