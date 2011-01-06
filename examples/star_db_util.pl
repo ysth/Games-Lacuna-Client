@@ -223,7 +223,7 @@ $star_db->do('vacuum');
 
 output("$db_file is now up-to-date with your probe data\n");
 
-output("$glc->{total_calls} api calls made.\n");
+output("$glc->{total_calls} api calls made.\n") if $glc->{total_calls};
 undef $glc;
 exit 0;
 
