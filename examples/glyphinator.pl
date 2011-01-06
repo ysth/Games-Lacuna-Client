@@ -219,7 +219,7 @@ sub get_status {
             verbose("No spaceport on $planet_name\n");
         }
 
-        if ($status->{archlevel}{$planet_name} >= 15) {
+        if ($status->{archlevel}{$planet_name} and $status->{archlevel}{$planet_name} >= 15) {
             my @shipyards = find_shipyards($buildings);
             verbose("No shipyards on $planet_name\n") unless @shipyards;
             for my $yard (@shipyards) {
@@ -454,7 +454,9 @@ sub find_arch_min {
     # Find the Archaeology Ministry
     my $arch_id = first {
             $buildings->{$_}->{name} eq 'Archaeology Ministry'
-    } keys %$buildings;
+    }
+    grep { $buildings->{$_}->{level} > 0 }
+    keys %$buildings;
 
     return if not $arch_id;
 
