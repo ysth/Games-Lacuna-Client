@@ -354,16 +354,16 @@ sub normalize_planet {
 }
 
 sub format_time_delta {
-    my ($delta) = @_;
+    my ($delta, $strict) = @_;
 
     given ($delta) {
         when ($_ < 0) {
             return "just finished";
         }
-        when ($_ < 90) {
+        when ($_ < ($strict ? 60 : 90)) {
             return pluralize($_, 'second');
         }
-        when ($_ < 5400) {
+        when ($_ < ($strict ? 3600 : 5400)) {
             my $min = round($_ / 60);
             return pluralize($min, 'minute');
         }
@@ -386,22 +386,22 @@ sub format_time_delta_full {
     my @formatted;
     my $sec = $delta % 60;
     if ($sec) {
-        unshift @formatted, format_time_delta($sec);
+        unshift @formatted, format_time_delta($sec,1);
         $delta -= $sec;
     }
     my $min = $delta % 3600;
     if ($min) {
-        unshift @formatted, format_time_delta($min);
+        unshift @formatted, format_time_delta($min,1);
         $delta -= $min;
     }
     my $hrs = $delta % 86400;
     if ($hrs) {
-        unshift @formatted, format_time_delta($hrs);
+        unshift @formatted, format_time_delta($hrs,1);
         $delta -= $hrs;
     }
     my $days = $delta;
     if ($days) {
-        unshift @formatted, format_time_delta($days);
+        unshift @formatted, format_time_delta($days,1);
     }
 
     return join(', ', @formatted);
