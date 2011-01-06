@@ -135,17 +135,15 @@ sub get_status {
         $status->{planet_location}{$planet_name}{x} = $result->{status}{body}{x};
         $status->{planet_location}{$planet_name}{y} = $result->{status}{body}{y};
 
-        my $arch = find_arch_min($buildings);
+        my ($arch, $level, $seconds_remaining) = find_arch_min($buildings);
         if ($arch) {
             verbose("Found an archaeology ministry on $planet_name\n");
-            $status->{archmin}{$planet_name} = $arch;
-            my $arch_detail = $arch->view;
-            $status->{archlevel}{$planet_name} = $arch_detail->{building}{level};
-            if ($arch_detail->{building}{work}) {
-                my $time_left = $arch_detail->{building}{work}{seconds_remaining};
+            $status->{archmin}{$planet_name}   = $arch;
+            $status->{archlevel}{$planet_name} = $level;
+            if ($seconds_remaining) {
                 push @{$status->{digs}}, {
                     planet   => $planet_name,
-                    finished => time() + $time_left,
+                    finished => time() + $seconds_remaining,
                 };
             } else {
                 $status->{idle}{$planet_name} = 1;
@@ -441,7 +439,15 @@ sub find_arch_min {
     } keys %$buildings;
 
     return if not $arch_id;
-    return $glc->building(id => $arch_id, type => 'Archaeology');
+
+    my $building  = $glc->building(
+        id   => $arch_id,
+        type => 'Archaeology',
+    );
+    my $level     = $buildings->{$arch_id}{level};
+    my $remaining = $buildings->{$arch_id}{work} ? $buildings->{$arch_id}{work}{seconds_remaining} : undef;
+
+    return ($building, $level, $remaining);
 }
 
 sub find_shipyards {
