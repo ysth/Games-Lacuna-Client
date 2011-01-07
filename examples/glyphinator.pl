@@ -195,7 +195,11 @@ sub get_status {
             my @excavators = grep { $_->{type} eq 'excavator' } @ships;
 
             push @{$status->{flying}},
-                map { $_->{distance} = int(($_->{arrives} - $_->{departed}) * $_->{speed} / 360000); $_ }
+                map {
+                    $_->{distance} = int(($_->{arrives} - $_->{departed}) * $_->{speed} / 360000);
+                    $_->{remaining} = int(($_->{arrives} - time()) * $_->{speed} / 360000);
+                    $_
+                }
                 map {
                     {
                         planet      => $planet_name,
@@ -351,7 +355,7 @@ END
     for my $ship (@{$status->{flying}}) {
         push @events, {
             epoch  => $ship->{arrives},
-            detail => "Excavator from $ship->{planet} arriving at $ship->{destination} ($ship->{distance} units)",
+            detail => "Excavator from $ship->{planet} arriving at $ship->{destination} ($ship->{distance} units, $ship->{remaining} left)",
         };
     }
     @events =
@@ -670,6 +674,7 @@ sub send_excavators {
                                 destination => $launch_status->{ship}{to}{name},
                                 speed       => $ex->{speed},
                                 distance    => $distance,
+                                remaining   => $distance,
                                 departed    => time(),
                                 arrives     => str2time(
                                     map { s!^(\d+)\s+(\d+)\s+!$2/$1/!; $_ }
