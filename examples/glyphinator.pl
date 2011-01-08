@@ -29,7 +29,7 @@ use feature ':5.10';
 
 use DBI;
 use FindBin;
-use List::Util qw(first min sum);
+use List::Util qw(first min max sum);
 use Date::Parse qw(str2time);
 use Math::Round qw(round);
 use Getopt::Long;
@@ -39,30 +39,49 @@ use Exception::Class;
 use lib "$FindBin::Bin/../lib";
 use Games::Lacuna::Client;
 
+my @batches;
+my $current_batch = 0;
+my $batch_opt_cb = sub {
+    my ($opt, $val) = @_;
+
+    if ($opt eq 'and') {
+        $current_batch++;
+        return;
+    }
+
+    $batches[$current_batch]{$opt} = $val;
+};
 my %opts;
 GetOptions(\%opts,
+    # General options
     'h|help',
     'q|quiet',
     'v|verbose',
-    'db=s',
-    'create-db',
     'config=s',
     'planet=s@',
+    'dry-run|dry',
+    'full-times',
+
+    # Arch digs
     'do-digs|dig',
     'min-ore=i',
     'min-arch=i',
-    'preferred-ore|ore=s@',
+    'preferred-ore|ore=s',
+
+    # Excavator options
+    'db=s',
+    'create-db',
     'send-excavators|send',
-    'max-excavators|max=i',
-    'min-dist=i',
-    'max-dist=i',
-    'zone=s',
-    'safe-zone-ok',
-    'inhabited-ok',
-    'furthest-first|furthest',
-    'dry-run|dry',
-    'full-times',
-);
+    'and'                     => $batch_opt_cb,
+    'max-excavators|max=s'    => $batch_opt_cb,
+    'min-dist=i'              => $batch_opt_cb,
+    'max-dist=i'              => $batch_opt_cb,
+    'zone=s'                  => $batch_opt_cb,
+    'safe-zone-ok'            => $batch_opt_cb,
+    'inhabited-ok'            => $batch_opt_cb,
+    'furthest-first|furthest' => $batch_opt_cb,
+) or usage();
+push @batches, {} unless @batches;
 
 usage() if $opts{h};
 
@@ -592,133 +611,151 @@ sub send_excavators {
     for my $planet (grep { $status->{ready}{$_} } keys %{$status->{ready}}) {
         verbose("Prepping excavators on $planet\n");
         my $port = $status->{spaceports}{$planet};
+        my $originally_docked = $status->{ready}{$planet};
 
         # During a dry-run, not actually updating the database results in
         # each excavator from each planet going to the same target.  Add
         # them to an exclude list to simulate them being actually used.
         my %skip;
 
-        my $count = $opts{'max-excavators'} ?
-            min($opts{'max-excavators'}, $status->{ready}{$planet})
-            : $status->{ready}{$planet};
+        for my $batch (@batches) {
+            my $docked = $status->{ready}{$planet};
 
-        my @dests = pick_destination($planet,
-            count => $count,
-        );
+            if ($docked == 0) {
+                diag("Ran out of excavators before batches were complete!\n");
+                delete $status->{ready}{$planet};
+                next PLANET;
+            }
 
-        if (@dests < $count) {
-            diag("Couldn't fetch $count destinations from $planet!\n");
-        }
+            my $count = $batch->{'max-excavators'} || $docked;
+            if ($count =~ /^(\d+)%/) {
+                $count = max(int(($1 / 100) * $originally_docked), 1);
+            }
+            $count = min($count, $docked);
 
-        my $all_done;
-        while (!$all_done) {
-            my $need_more = 0;
+            my @dests = pick_destination(
+                planet => $planet,
+                count  => $count,
+                batch  => $batch,
+            );
 
-            for (@dests) {
-                my ($dest_name, $x, $y, $distance, $zone) = @$_;
+            if (@dests < $count) {
+                diag("Couldn't fetch $count destinations from $planet!\n");
+            }
 
-                my $ships;
-                my $ok = eval {
-                    $ships = $port->get_ships_for($status->{planets}{$planet}, {x => $x, y => $y});
-                    return 1;
-                };
-                unless ($ok) {
-                    if (my $e = Exception::Class->caught('LacunaRPCException')) {
-                        if ($e->code eq '1002') {
-                            # Empty orbit, update db and try again
-                            output("$dest_name is an empty orbit, trying again...\n");
-                            mark_orbit_empty($x, $y);
+            my $all_done;
+            while (!$all_done) {
+                my $need_more = 0;
 
-                            $need_more++;
-                            next;
+                for (@dests) {
+                    my ($dest_name, $x, $y, $distance, $zone) = @$_;
+
+                    my $ships;
+                    my $ok = eval {
+                        $ships = $port->get_ships_for($status->{planets}{$planet}, {x => $x, y => $y});
+                        return 1;
+                    };
+                    unless ($ok) {
+                        if (my $e = Exception::Class->caught('LacunaRPCException')) {
+                            if ($e->code eq '1002') {
+                                # Empty orbit, update db and try again
+                                output("$dest_name is an empty orbit, trying again...\n");
+                                mark_orbit_empty($x, $y);
+
+                                $need_more++;
+                                next;
+                            }
+                        }
+                        else {
+                            my $e = Exception::Class->caught();
+                            ref $e ? $e->rethrow : die $e;
                         }
                     }
-                    else {
-                        my $e = Exception::Class->caught();
-                        ref $e ? $e->rethrow : die $e;
-                    }
-                }
 
-                unless (grep { $_->{type} eq 'excavator' } @{$ships->{available}}) {
-                    if (grep { $_->{reason}[0] eq '1010' } @{$ships->{unavailable}}) {
-                        # This will set the "last_excavated" time to now, which is not
-                        # the case, but it's as good as we have.  It means that some bodies
-                        # might take longer to get re-dug but whatever, there are others
-                        output("$dest_name was unavailable due to recent search, trying again...\n");
-                        update_last_sent($x, $y);
-                    } else {
-                        diag("Unknown error sending excavator from $planet to $dest_name!\n");
-                        next PLANET;
-                    }
-
-                    $need_more++;
-                    next;
-                }
-
-                $skip{$dest_name}++;
-
-                my $ex = first {
-                    $_->{type} eq 'excavator'
-                } @{$ships->{available}};
-
-                if ($opts{'dry-run'}) {
-                    output("Would have sent excavator from $planet to $dest_name ($distance units, zone $zone).\n");
-                } else {
-                    output("Sending excavator from $planet to $dest_name ($distance units, zone $zone)...\n");
-                    my $launch_status = $port->send_ship($ex->{id}, {x => $x, y => $y});
-
-                    if ($launch_status->{ship}->{date_arrives}) {
-                        push @{$status->{flying}},
-                            {
-                                planet      => $planet,
-                                destination => $launch_status->{ship}{to}{name},
-                                speed       => $ex->{speed},
-                                distance    => $distance,
-                                remaining   => $distance,
-                                departed    => time(),
-                                arrives     => str2time(
-                                    map { s!^(\d+)\s+(\d+)\s+!$2/$1/!; $_ }
-                                    $launch_status->{ship}{date_arrives}
-                                ),
-                            };
-
+                    unless (grep { $_->{type} eq 'excavator' } @{$ships->{available}}) {
+                        if (grep { $_->{reason}[0] eq '1010' } @{$ships->{unavailable}}) {
+                            # This will set the "last_excavated" time to now, which is not
+                            # the case, but it's as good as we have.  It means that some bodies
+                            # might take longer to get re-dug but whatever, there are others
+                            output("$dest_name was unavailable due to recent search, trying again...\n");
                             update_last_sent($x, $y);
-                    } else {
-                        diag("Error sending excavator to $dest_name!\n");
-                        warn Dumper $launch_status;
+                        } else {
+                            diag("Unknown error sending excavator from $planet to $dest_name!\n");
+                            next PLANET;
+                        }
+
+                        $need_more++;
+                        next;
                     }
+
+                    $skip{$dest_name}++;
+
+                    my $ex = first {
+                        $_->{type} eq 'excavator'
+                    } @{$ships->{available}};
+
+                    if ($opts{'dry-run'}) {
+                        output("Would have sent excavator from $planet to $dest_name ($distance units, zone $zone).\n");
+                    } else {
+                        output("Sending excavator from $planet to $dest_name ($distance units, zone $zone)...\n");
+                        my $launch_status = $port->send_ship($ex->{id}, {x => $x, y => $y});
+
+                        if ($launch_status->{ship}->{date_arrives}) {
+                            push @{$status->{flying}},
+                                {
+                                    planet      => $planet,
+                                    destination => $launch_status->{ship}{to}{name},
+                                    speed       => $ex->{speed},
+                                    distance    => $distance,
+                                    remaining   => $distance,
+                                    departed    => time(),
+                                    arrives     => str2time(
+                                        map { s!^(\d+)\s+(\d+)\s+!$2/$1/!; $_ }
+                                        $launch_status->{ship}{date_arrives}
+                                    ),
+                                };
+
+                                update_last_sent($x, $y);
+                        } else {
+                            diag("Error sending excavator to $dest_name!\n");
+                            warn Dumper $launch_status;
+                        }
+                    }
+
+                    $status->{ready}{$planet}--;
                 }
 
-                $status->{ready}{$planet}--;
-            }
-
-            # Defer looking up more until we've finished processing our
-            # current queue, otherwise we end up re-fetching ones we haven't
-            # actually tried yet and get duplicates
-            if ($need_more) {
-                @dests = pick_destination($planet,
-                    count => $need_more,
-                    skip  => [keys %skip],
-                );
-            } else {
-                $all_done = 1;
+                # Defer looking up more until we've finished processing our
+                # current queue, otherwise we end up re-fetching ones we haven't
+                # actually tried yet and get duplicates
+                if ($need_more) {
+                    @dests = pick_destination(
+                        planet => $planet,
+                        count  => $need_more,
+                        batch  => $batch,
+                        skip   => [keys %skip],
+                    );
+                } else {
+                    $all_done = 1;
+                }
             }
         }
-
         delete $status->{ready}{$planet}
             if !$status->{ready}{$planet};
     }
 }
 
 sub pick_destination {
-    my ($planet, %args) = @_;
+    my (%args) = @_;
 
+    my $planet = $args{planet};
+    my $batch  = $args{batch};
     my $base_x = $status->{planet_location}{$planet}{x};
     my $base_y = $status->{planet_location}{$planet}{y};
 
     # Compute box size based on specified max hypotenuse
-    my $min_dist = $opts{'min-dist'} || 0;
-    my $max_dist = $opts{'max-dist'} || 3000;
+    my $min_dist = $batch->{'min-dist'} || 0;
+    my $max_dist = $batch->{'max-dist'} || 3000;
     my $box_min = $min_dist ? int(sqrt($min_dist * $min_dist / 2)) : 0;
     my $box_max = int(sqrt($max_dist * $max_dist / 2));
     my $max_squared = $max_dist * $max_dist;
@@ -729,7 +766,9 @@ sub pick_destination {
     my $current_max = $box_min;
     my $skip        = $args{skip} || [];
 
-    my $furthest = $opts{'furthest-first'};
+    my $furthest = $batch->{'furthest-first'};
+
+    verbose("Seeking $count destinations for $planet\n");
 
     my @results;
     while (@results < $count and ($furthest ? $current_min > 0 : $current_max < $box_max)) {
@@ -752,10 +791,10 @@ sub pick_destination {
             $skip_sql = "and s.name || ' ' || o.orbit not in (" . join(',',map { '?' } 1..@$skip) . ")";
         }
         my $inner_box = $current_min > 0 ? 'and not (o.x between ? and ? and o.y between ? and ?)' : '';
-        my $safe_zone = $opts{'safe-zone-ok'} ? '' : q{and (s.zone is null or s.zone != '-3|0')};
-        my $inhabited = $opts{'inhabited-ok'} ? '' : q{and o.empire_id is null};
-        my $zone      = $opts{'zone'} ? 'and zone = ?' : '';
-        my $order     = $opts{'furthest-first'} ? 'desc' : 'asc';
+        my $safe_zone = $batch->{'safe-zone-ok'} ? '' : q{and (s.zone is null or s.zone != '-3|0')};
+        my $inhabited = $batch->{'inhabited-ok'} ? '' : q{and o.empire_id is null};
+        my $zone      = $batch->{'zone'} ? 'and zone = ?' : '';
+        my $order     = $batch->{'furthest-first'} ? 'desc' : 'asc';
         my $find_dest = $star_db->prepare(<<SQL);
 select   s.name, o.orbit, o.x, o.y, s.zone, (o.x - ?) * (o.x - ?) + (o.y - ?) * (o.y - ?) as dist
 from     orbitals o
@@ -784,8 +823,8 @@ SQL
             $base_y + $current_max,
             @$skip,
         );
-        if ($opts{zone}) {
-            push @vals, $opts{zone};
+        if ($batch->{zone}) {
+            push @vals, $batch->{zone};
         }
         if ($current_min > 0) {
             push @vals,
@@ -898,7 +937,9 @@ Options:
                            The information for these is selected from the star
                            database, and the database is updated to reflect your
                            new searches.
-  --max-excavators <n>   - Send at most this number of excavators from any colony
+  --max-excavators <n>   - Send at most this number of excavators from any colony.
+                           This argument can also be specified as a percentage,
+                           eg '25%'
   --min-dist <n>         - Minimum distance to send excavators
   --max-dist <n>         - Maximum distance to send excavators
   --zone <id>            - Specify a particular zone to send to, if possible
@@ -908,6 +949,17 @@ Options:
   --dry-run              - Don't actually take any action, just report status and
                            what actions would have taken place.
   --full-times           - Specify timestamps in full precision instead of rounded
+
+The excavator arguments can be combined into separate batches, to allow you to
+send with multiple set of criteria, separated by an --and argument.  All of the
+options above starting with --max-excavators through --furthest-first may be
+used independently in each batch.  An example might be:
+
+    --max-excavators 2 --min-dist 500 --and --max-excavators '50%'
+
+Which would first send 2 500 or more units, then half of the remaining docked
+ones to their nearest destination.  This is repeated for each colony, or the ones
+indicated by --planet
 END
     exit 1;
 }
