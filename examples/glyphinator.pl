@@ -114,7 +114,8 @@ if ($star_db) {
         diag("Star database is empty!\n");
         $star_db = undef;
     }
-
+}
+if ($star_db) {
     my $ok = eval {
         $star_db->do('select zone from stars limit 1');
         return 1;
