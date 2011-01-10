@@ -93,6 +93,7 @@ my $glc = Games::Lacuna::Client->new(
     cfg_file => $opts{config} || "$FindBin::Bin/../lacuna.yml",
 );
 
+my $star_util = "$FindBin::Bin/star_db_util.pl";
 no warnings 'once';
 my $db_file = $opts{db} || "$FindBin::Bin/../stars.db";
 my $star_db;
@@ -102,7 +103,7 @@ if (-f $db_file) {
     $star_db->{RaiseError} = 1;
     $star_db->{PrintError} = 0;
 } else {
-    warn "No star database found.  Specify it with --db or use star_db_util.pl --create-db to create it.\n";
+    warn "No star database found.  Specify it with --db or use $star_util --create-db to create it.\n";
     if ($opts{'send-excavators'}) {
         warn "Can't send excavators without star database!\n";
     }
@@ -123,7 +124,7 @@ if ($star_db) {
     unless ($ok) {
         my $e = $@;
         if ($e =~ /no such column/) {
-            die "Database needs an upgrade, please run star_db_util.pl --upgrade\n";
+            die "Database needs an upgrade, please run $star_util --upgrade\n";
         } else {
             die $e;
         }
