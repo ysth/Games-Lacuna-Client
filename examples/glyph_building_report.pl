@@ -33,7 +33,7 @@ my $empire = $glc->empire->get_status->{empire};
 # reverse hash, to key by name instead of id
 my %planets = map { $empire->{planets}{$_}, $_ } keys %{$empire->{planets}};
 
-my @types = qw(Food Ore Water Energy Storage Happy Ship Defense);
+my @types = qw(Food Ore Water Energy Storage Happy Ship Defense Size);
 my %glyph_buildings = (
     'Malcud Field'          => ['Food','malcud'],
     'Algae Pond'            => ['Food','algae'],
@@ -47,6 +47,7 @@ my %glyph_buildings = (
     'Crashed Ship Site'     => ['Ship','crash'],
     'Kalavian Ruins'        => ['Happy','ruins'],
     'Citadel of Knope'      => ['Defense','citadel'],
+    'Pantheon of Hagness'   => ['Size','pantheon'],
 );
 
 printf "%-20s", "Colony";
