@@ -34,15 +34,15 @@ sub show_status {
             ucfirst($res),
             _c_('reset')._c_('green'),
             _c_('bold yellow'),
-            $status->{ $res eq 'happiness' ? $res : "$res\_stored" }, 
+            $status->{ $res eq 'happiness' ? $res : "$res\_stored" },
             _c_('reset')._c_('yellow'),
-            _c_('bold'), 
-            $status->{ $res eq 'happiness' ? 'N/A' : "$res\_capacity" }, 
+            _c_('bold'),
+            $status->{ $res eq 'happiness' ? 'N/A' : "$res\_capacity" },
             _c_('reset')._c_('cyan'),
-            _c_('bold cyan'), 
+            _c_('bold cyan'),
             $status->{ "$res\_hour" },
             _c_('reset')._c_('cyan'),
-            _c_('bold '.($pct_full > 95 ? 'red' : $pct_full > 80 ? 'yellow' : 'green')), 
+            _c_('bold '.($pct_full > 95 ? 'red' : $pct_full > 80 ? 'yellow' : 'green')),
             $res eq 'happiness' ? '  --' : sprintf('%3d%%',$pct_full),
             _c_('cyan'),
             $res eq 'happiness' ? '    --' : sprintf('% 6.1f',($status->{"$res\_capacity"} - $status->{"$res\_stored"})/$status->{"$res\_hour"}),
@@ -89,7 +89,11 @@ sub ship_report {
         my $result;
         for my $s (@$sort) {
             my $reverse = $s =~ s/^-//g;
-            if ($s eq 'speed' || $s eq 'hold_size' || $s eq 'stealth') {
+            if ( $s eq 'speed'
+              || $s eq 'hold_size'
+              || $s eq 'stealth'
+              || $s eq 'combat'
+            ) {
                 $result = $a->{$s} <=> $b->{$s};
             } else {
                 $result = $a->{$s} cmp $b->{$s};
@@ -102,13 +106,13 @@ sub ship_report {
     show_bar('=');
     say(_c_('bold green'),"Ship Report",_c_('reset'));
     show_bar('-');
-    printf("%-12s %-12s %-12s %7s %5s %5s  %s\n",qw(Name Type Location Cargo Speed Stlh Status));
+    printf("%-12s %-12s %-12s %7s %5s %5s %6s  %s\n",qw(Name Type Location Cargo Speed Stlh combat Status));
     for my $ship (@ships) {
          my $task = $ship->{task};
          my $status_string;
          if ($task eq 'Docked') {
             $status_string = _c_('bold green')."Docked";
-         } 
+         }
          elsif ($task eq 'Travelling') {
             $status_string = _c_('bold cyan')."Travelling"._c_('reset');
             #_c_('green').sprintf("\n%s%s -> %s, arriving %s",(' 'x13),$ship->{from}->{name},$ship->{to}->{name},$ship->{date_arrives});
@@ -118,19 +122,20 @@ sub ship_report {
          }
          elsif ($task eq 'Building') {
             $status_string = _c_('bold red')."Building";
-         } 
+         }
          else {
             $status_string = _c_('bold magenta').$task
          }
          $status_string .= _c_('reset');
 
-         printf("%s%-12s %s%-12s %s%-12s %s%7s %5s %5s  %s\n",
+         printf("%s%-12s %s%-12s %s%-12s %s%7s %5s %5s %6s  %s\n",
              _c_('bold yellow'),substr($ship->{name},    0,12),
              _c_('bold green') ,substr($ship->{type},    0,12),
              _c_('bold cyan')  ,substr($ship->{location},0,12),
              _c_('reset')      ,$ship->{hold_size},
              $ship->{speed},
              $ship->{stealth},
+             $ship->{combat},
              $status_string
          );
     }
@@ -166,19 +171,19 @@ sub mission_list {
         }
         show_bar('-','bold black');
     }
-}   
+}
 
-sub production_report { 
+sub production_report {
     # Takes a list of hashrefs, each is the "building" portion of view()
-    my @buildings = @_; 
+    my @buildings = @_;
     show_bar('=','magenta');
     say(_c_('bold magenta').'Production Report (Per Hour)');
     show_bar('-','magenta');
     printf("%20s %2s %6s %6s %6s %6s %6s %6s\n",
         'Building Type','Lv',
         qw(Food Ore Water Energy Happy Waste));
-    @buildings = sort { production_sum($b) <=> production_sum($a) 
-                        || $a->{waste_hour} <=> $b->{waste_hour} } 
+    @buildings = sort { production_sum($b) <=> production_sum($a)
+                        || $a->{waste_hour} <=> $b->{waste_hour} }
                         @buildings;
     my $gross;
     for my $building (@buildings) {
@@ -186,7 +191,7 @@ sub production_report {
             _c_('bold yellow'),
             substr($building->{name},0,20),
             $building->{level},
-            (map { color_code($building->{"$_\_hour"}) } 
+            (map { color_code($building->{"$_\_hour"}) }
                 qw(food ore water energy happiness)),
             color_code($building->{waste_hour},1), #reverse color coding
             _c_('reset'),
@@ -207,7 +212,7 @@ sub production_report {
             _c_('bold yellow'),
             "Gross $type",
             '',
-            (map { color_code($gross->{$type}->{$_}) } 
+            (map { color_code($gross->{$type}->{$_}) }
                 qw(food ore water energy happiness waste)),
             _c_('reset'),
         );
@@ -217,37 +222,42 @@ sub production_report {
 
 sub trade_list {
     show_bar('-','green');
-    printf("%15s %10s %15s %10s %10s %s\n",
+    printf("%15s %6s %10s %10s %s\n",
         'Empire',
-        'Ratio',
         'Asking',
         'Offering',
         'Quantity',
         'Description',
     );
-    for my $item (@_) {
-        my $rt = $item->{real_type};
-        my ($desc) = $item->{offer_description} =~ m/^(?:\d+\s)?(.+)/imxg;
-        printf("%s%15s %s%10s %s%15s %s%10s %10i %s\n",
-            _c_('bold cyan'),
-            substr($item->{empire}->{name},0,15),
-            _c_('reset')._c_('cyan'),
-            $item->{ratio},
-            _c_('reset'),
-            substr($item->{ask_description},0,15),
-            _c_($rt eq 'food' ? 'bold green' :
-                $rt eq 'ore'  ? 'bold yellow' :
-                $rt eq 'water' ? 'bold blue' :
-                $rt eq 'energy' ? 'bold cyan' :
-                $rt eq 'glyph' ? 'bold magenta' :
-                $rt eq 'plan' ? 'magenta' :
-                $rt eq 'waste' ? 'bold red' :
-                $rt eq 'ship' ? 'bold white' :
-                'reset'),
-            $rt,
-            $item->{offer_quantity},
-            $desc,
-        );
+    for my $trade (@_) {
+        my(@offer) = $trade->offer;
+        my $empire = $trade->empire;
+        my $cost   = $trade->cost;
+
+        for my $item ( @offer ){
+            my $rt     = $item->type;
+            printf("%s%15s %s%6s %s%10s %10i %s\n",
+                _c_('bold cyan'),
+                substr($empire,0,15),
+                _c_('reset'),
+                substr($cost,0,15),
+                _c_($rt eq 'food' ? 'bold green' :
+                    $rt eq 'ore'  ? 'bold yellow' :
+                    $rt eq 'water' ? 'bold blue' :
+                    $rt eq 'energy' ? 'bold cyan' :
+                    $rt eq 'glyph' ? 'bold magenta' :
+                    $rt eq 'plan' ? 'magenta' :
+                    $rt eq 'waste' ? 'bold red' :
+                    $rt eq 'ship' ? 'bold white' :
+                    'reset'),
+                $rt,
+                $item->quantity,
+                $item->sub_type,
+            );
+            $empire = '';
+            $cost   = '';
+        }
+        print "\n";
     }
     show_bar('-','green');
 }
@@ -257,16 +267,16 @@ sub color_code {
     $val = 0 if not defined $val;
     my $original = $val;
     $val *= -1 if $reverse;
-    return ((($val > 0) ? _c_('bold green') 
-           : ($val < 0) ? _c_('bold red') 
+    return ((($val > 0) ? _c_('bold green')
+           : ($val < 0) ? _c_('bold red')
            : _c_('white')),$original);
 }
 
 sub production_sum {
     my $building = shift;
-    return sum( 
+    return sum(
         @{$building}{
-            map { "$_\_hour" } 
+            map { "$_\_hour" }
             qw(food water ore energy happiness)
         }
     );
@@ -299,7 +309,7 @@ sub show_bar {
 }
 
 sub say  {
-    print @_,"\n"; 
+    print @_,"\n";
 }
 
 sub _c_ {
