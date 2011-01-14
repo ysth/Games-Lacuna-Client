@@ -29,7 +29,7 @@ use feature ':5.10';
 
 use DBI;
 use FindBin;
-use List::Util qw(first min max sum);
+use List::Util qw(first min max sum reduce);
 use Date::Parse qw(str2time);
 use Math::Round qw(round);
 use Getopt::Long;
@@ -71,6 +71,7 @@ GetOptions(\%opts,
     # Excavator options
     'db=s',
     'send-excavators|send',
+    'rebuild',
     'and'                     => $batch_opt_cb,
     'max-excavators|max=s'    => $batch_opt_cb,
     'min-dist=i'              => $batch_opt_cb,
@@ -243,6 +244,7 @@ sub get_status {
 
         if ($status->{archlevel}{$planet_name} and $status->{archlevel}{$planet_name} >= 15) {
             my @shipyards = find_shipyards($buildings);
+            $status->{shipyards}{$planet_name} = \@shipyards;
             verbose("No shipyards on $planet_name\n") unless @shipyards;
             for my $yard (@shipyards) {
                 verbose("Found a shipyard on $planet_name\n");
@@ -276,6 +278,7 @@ sub get_status {
                     verbose(scalar @excavators_building . " excavators building at this yard\n");
                     push @{$status->{building}{$planet_name}}, @excavators_building;
                     $status->{not_building}{$planet_name} = 0;
+                    $yard->{last_finishes} = max(map { $_->{finished} } @excavators_building);
                 }
             }
         } else {
@@ -614,6 +617,7 @@ sub send_excavators {
         my $port = $status->{spaceports}{$planet};
         my $originally_docked = $status->{ready}{$planet};
         my $warned_cant_verify;
+        my $launch_count;
 
         # During a dry-run, not actually updating the database results in
         # each excavator from each planet going to the same target.  Add
@@ -732,6 +736,7 @@ sub send_excavators {
                         my $launch_status = $port->send_ship($ex->{id}, {x => $x, y => $y});
 
                         if ($launch_status->{ship}->{date_arrives}) {
+                            $launch_count++;
                             push @{$status->{flying}},
                                 {
                                     planet      => $planet,
@@ -773,6 +778,39 @@ sub send_excavators {
         }
         delete $status->{ready}{$planet}
             if !$status->{ready}{$planet};
+
+        if ($launch_count and $opts{rebuild}) {
+            for (1..$launch_count) {
+                # Add an excavator to a shipyard if we can, to wherever the
+                # shortest build queue is
+
+                output("Building an excavator on $planet to replace one sent\n");
+
+                my $yard = reduce { $a->{last_finishes} < $b->{last_finishes} ? $a : $b }
+                    @{$status->{shipyards}{$planet}};
+
+                # Catch if this dies, we didnt actually confirm that we could build
+                # an excavator in this yard at this time.  Queue could be full, or
+                # we could be out of materials, etc.  This is probably cheaper than
+                # doing the get_buildable call before every single build.
+                my $ok = eval {
+                    my $build = $yard->build_ship('excavator');
+                    my $finish = time() + $build->{building}{work}{seconds_remaining};
+
+                    push @{$status->{building}{$planet}}, {
+                        finished => $finish,
+                    };
+                    $yard->{last_finishes} = $finish;
+                    $status->{not_building}{$planet} = 0;
+                    return 1;
+                };
+                unless ($ok) {
+                    my $e = $@;
+                    diag("Error rebuilding: $e\n");
+                }
+            }
+
+        }
     }
 }
 
@@ -947,6 +985,7 @@ Options:
                            The information for these is selected from the star
                            database, and the database is updated to reflect your
                            new searches.
+  --rebuild              - Build a new excavator for each one sent
   --max-excavators <n>   - Send at most this number of excavators from any colony.
                            This argument can also be specified as a percentage,
                            eg '25%'
