@@ -598,6 +598,15 @@ sub determine_ore {
 
 ## Excavators ##
 
+my %attack_ships;
+BEGIN {
+    %attack_ships = map { $_ => 1 } qw/
+        bleeder observatory_seeker spaceport_seeker
+        placebo placebo2 placebo3 placebo4 placebo5 placebo6
+        scow security_ministry_seeker
+        snark snark2 snark3 spy_pod spy_shuttle sweeper thud
+    /;
+}
 sub send_excavators {
     PLANET:
     for my $planet (grep { $status->{ready}{$_} } keys %{$status->{ready}}) {
@@ -665,7 +674,7 @@ sub send_excavators {
                     }
 
                     unless (grep { $_->{type} eq 'excavator' } @{$ships->{available}}) {
-                        if (grep { $_->{reason}[0] eq '1010' } @{$ships->{unavailable}}) {
+                        if (grep { $_->{ship}{type} eq 'excavator' and $_->{reason}[0] eq '1010' } @{$ships->{unavailable}}) {
                             # This will set the "last_excavated" time to now, which is not
                             # the case, but it's as good as we have.  It means that some bodies
                             # might take longer to get re-dug but whatever, there are others
@@ -678,6 +687,33 @@ sub send_excavators {
 
                         $need_more++;
                         next;
+                    }
+
+                    # Check even harder to see if inhabited, if we want to avoid those
+                    unless ($batch->{'inhabited-ok'}) {
+                        my @avail_attack_ships   = grep { $attack_ships{$_->{type}} }
+                            @{$ships->{available}};
+                        my @unavail_attack_ships = grep { $attack_ships{$_->{ship}{type}} }
+                            @{$ships->{unavailable}};
+
+                        if (@avail_attack_ships) {
+                            output("$dest_name is an occupied planet, trying again...\n");
+                            mark_orbit_occupied($x, $y);
+                            $need_more++;
+                            next;
+                        } elsif(@unavail_attack_ships) {
+                            # 1013 - Can only be sent to inhabited planets (uninhabited planet)
+                            # 1009 - Can only be sent to planets and stars (asteroid)
+                            if (!grep { $_->{reason}[0] eq '1013' or $_->{reason}[0] eq '1009'}
+                                    @unavail_attack_ships) {
+                                output("$dest_name is an occupied planet, trying again...\n");
+                                mark_orbit_occupied($x, $y);
+                                $need_more++;
+                                next;
+                            }
+                        } else {
+                            diag("$planet has no spy pods, scows, or attack ships, cannot verify if this planet is inhabited!\n");
+                        }
                     }
 
                     $skip{$dest_name}++;
@@ -859,6 +895,15 @@ sub mark_orbit_empty {
     my ($x, $y) = @_;
 
     my $r = $star_db->do(q{update orbitals set type = 'empty' where x = ? and y = ?}, {}, $x, $y);
+    unless ($r > 0) {
+        diag("Warning: could not update orbitals table for body at $x, $y!\n");
+    }
+}
+
+sub mark_orbit_occupied {
+    my ($x, $y) = @_;
+
+    my $r = $star_db->do(q{update orbitals set empire_id = -1 where x = ? and y = ?}, {}, $x, $y);
     unless ($r > 0) {
         diag("Warning: could not update orbitals table for body at $x, $y!\n");
     }
