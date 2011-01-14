@@ -613,6 +613,7 @@ sub send_excavators {
         verbose("Prepping excavators on $planet\n");
         my $port = $status->{spaceports}{$planet};
         my $originally_docked = $status->{ready}{$planet};
+        my $warned_cant_verify;
 
         # During a dry-run, not actually updating the database results in
         # each excavator from each planet going to the same target.  Add
@@ -712,7 +713,9 @@ sub send_excavators {
                                 next;
                             }
                         } else {
-                            diag("$planet has no spy pods, scows, or attack ships, cannot verify if this planet is inhabited!\n");
+                            unless ($warned_cant_verify++) {
+                                diag("$planet has no spy pods, scows, or attack ships, cannot verify if this planet is inhabited!\n");
+                            }
                         }
                     }
 
