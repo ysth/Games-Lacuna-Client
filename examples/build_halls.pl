@@ -69,7 +69,7 @@ if ($opts{type}) {
 }
 
 # Scan each planet
-my (%glyphs, %archmins);
+my (%glyphs, %archmins, %plan_count);
 for my $planet_name (sort keys %planets) {
     if (keys %do_planets) {
         next unless $do_planets{normalize_planet($planet_name)};
@@ -81,6 +81,14 @@ for my $planet_name (sort keys %planets) {
     my $planet    = $glc->body(id => $planets{$planet_name});
     my $result    = $planet->get_buildings;
     my $buildings = $result->{buildings};
+
+    # Find the PCC
+    my $pcc_id = first {
+        $buildings->{$_}->{name} eq 'Planetary Command Center'
+    } keys %$buildings;
+    my $pcc = $glc->building(id => $pcc_id, type => 'PlanetaryCommand');
+    my $plans = $pcc->view_plans;
+    $plan_count{$planet_name} = scalar @{$plans->{plans}};
 
     # Find the Archaeology Ministry
     my $arch_id = first {
@@ -107,12 +115,24 @@ for my $i (0..$#recipes) {
     my $which = $i + 1;
 
     # Determine how many of each we're able to build
+    PLANET:
     for my $planet (keys %glyphs) {
         my $can_build_here = min(
             map { $glyphs{$planet}{$_} ? scalar @{$glyphs{$planet}{$_}}: 0 } @{$recipes[$i]}
         );
         verbose("$planet can build $can_build_here Halls #$which\n")
             if $can_build_here;
+
+        if ($can_build_here + $plan_count{$planet} > 20) {
+            if ($plan_count{$planet} >= 20) {
+                output("$planet is full of plans!\n");
+                next PLANET;
+            } else {
+                my $new = 20 - $plan_count{$planet};
+                output("Too many plans on $planet, reducing from $can_build_here to $new\n");
+                $can_build_here = $new;
+            }
+        }
 
         for my $j (0 .. $can_build_here - 1) {
             push @builds, {
@@ -140,6 +160,7 @@ for my $i (0..$#recipes) {
             output("Building a Halls #$which on $build->{planet}\n");
             $build->{arch}->assemble_glyphs($build->{glyphs});
         }
+        $plan_count{$build->{planet}}++;
     }
 }
 
