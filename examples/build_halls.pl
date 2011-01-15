@@ -127,7 +127,7 @@ for my $i (0..$#recipes) {
 
     # Do builds
     my $how_many = max(@builds - ($opts{'use-last'} ? 0 : 1), 0);
-    $how_many = min($opts{max}, $how_many) if $opts{max};
+    $how_many = min($opts{max} - $built, $how_many) if $opts{max};
 
     $built += $how_many;
     $possible += @builds;
@@ -188,7 +188,7 @@ Options:
   --verbose       - Print more output
   --quiet         - Only output errors
   --config <file> - GLC config, defaults to lacuna.yml
-  --max <n>       - Build at most <n> of any recipe
+  --max <n>       - Build at most <n> Halls
   --planet <name> - Build only on the specified planet(s)
   --use-last      - Use the last of any glyph if necessary
   --dry-run       - Print what would have been built, but don't do it
