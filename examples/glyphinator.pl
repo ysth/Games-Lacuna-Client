@@ -138,6 +138,7 @@ do_digs() if $opts{'do-digs'};
 send_excavators() if $opts{'send-excavators'} and $star_db;
 report_status();
 output("$glc->{total_calls} api calls made.\n");
+output("You have made $glc->{rpc_count} calls today\n");
 
 # Destroy client object prior to global destruction to avoid GLC bug
 undef $glc;
