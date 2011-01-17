@@ -90,15 +90,16 @@ for my $planet_name (keys %planets) {
         my $need = int($total_candidates * $pct);
         my $to_assign = $need - @busy;
 
+        my $def_cnt = @defenders;
+        my $sweep_cnt = grep { $_->{assignment} eq 'Security Sweep' } @defenders;
+
         for (1 .. $to_assign) {
             my $spy = $ready[$_ - 1];
             output("Assigning spy $spy->{name} on $planet_name to Security Sweep\n");
             $int->assign_spy($spy->{id}, 'Security Sweep');
-            $_->{assignment} = 'Security Sweep';
+            $sweep_cnt++;
         }
 
-        my $def_cnt = @defenders;
-        my $sweep_cnt = grep { $_->{assignment} eq 'Security Sweep' } @defenders;
         output("$sweep_cnt of $def_cnt defenders currently sweeping on $planet_name\n");
     } else {
         verbose("No intelligence ministry on $planet_name\n");
