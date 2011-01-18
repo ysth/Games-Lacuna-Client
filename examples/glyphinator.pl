@@ -486,7 +486,7 @@ sub find_arch_min {
     my $arch_id = first {
             $buildings->{$_}->{name} eq 'Archaeology Ministry'
     }
-    grep { $buildings->{$_}->{level} > 0 }
+    grep { $buildings->{$_}->{level} > 0 and $buildings->{$_}->{efficiency} == 100 }
     keys %$buildings;
 
     return if not $arch_id;
@@ -508,7 +508,7 @@ sub find_shipyards {
     my @yard_ids = grep {
             $buildings->{$_}->{name} eq 'Shipyard'
     }
-    grep { $buildings->{$_}->{level} > 0 }
+    grep { $buildings->{$_}->{level} > 0 and $buildings->{$_}->{efficiency} == 100 }
     keys %$buildings;
 
     return if not @yard_ids;
@@ -522,7 +522,7 @@ sub find_spaceport {
     my $port_id = first {
             $buildings->{$_}->{name} eq 'Space Port'
     }
-    grep { $buildings->{$_}->{level} > 0 }
+    grep { $buildings->{$_}->{level} > 0 and $buildings->{$_}->{efficiency} == 100 }
     keys %$buildings;
 
     return if not $port_id;
