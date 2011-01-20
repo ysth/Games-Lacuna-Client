@@ -48,6 +48,7 @@ my @spies;
 
 for my $spy ( @{ $intel->view_spies->{spies} } ) {
     next if lc( $spy->{assigned_to}{name} ) ne lc( $target );
+    next unless $spy->{is_available};
     
     my @missions = grep {
         $_->{task} =~ /^$assignment/i
