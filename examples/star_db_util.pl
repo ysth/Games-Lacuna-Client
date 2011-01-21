@@ -30,6 +30,7 @@ GetOptions(\%opts,
     'merge-db=s',
     'planet=s@',
     'no-fetch',
+    'scan-nearby',
 );
 
 usage() if $opts{h};
@@ -171,53 +172,70 @@ unless ($opts{'no-fetch'}) {
         my $planet    = $glc->body(id => $planets{$planet_name});
         my $result    = $planet->get_buildings;
         my $buildings = $result->{buildings};
+        $planet = $result->{status}->{body};
+        my @stars;
 
         my $obs = find_observatory($buildings);
-        next unless $obs;
-
-        my $page = 1;
-        my $done;
-        while (!$done) {
-            $done = 1;
-
-            verbose("Getting page $page of stars...\n");
-            my $stars = $obs->get_probed_stars($page);
-            for my $star (@{$stars->{stars}}) {
-                if (my $row = star_exists($star->{x}, $star->{y})) {
-                    if ((($row->{name}||q{}) ne $star->{name})
-                            or (($row->{color}||q{}) ne $star->{color})
-                            or (($row->{zone}||q{}) ne $star->{zone})) {
-                        update_star(@{$star}{qw/x y name color zone/})
-                    } else {
-                        mark_star_checked(@{$row}{qw/x y/});
-                    }
-                } else {
-                    insert_star(@{$star}{qw/id name x y color zone/});
-                }
-
-                if ($star->{bodies} and @{$star->{bodies}}) {
-                    for my $body (@{$star->{bodies}}) {
-                        if (my $row = orbital_exists($body->{x}, $body->{y})) {
-                            if ((($row->{type}||q{}) ne $body->{type})
-                                    or (($row->{name}||q{}) ne $body->{name})
-                                    or ($body->{empire} and ($row->{empire_id}||q{}) ne $body->{empire}{id})
-                                    or (defined($body->{size}) and ($row->{size}||q{}) ne $body->{size}) ) {
-                                update_orbital($body);
-                            } else {
-                                mark_orbital_checked(@{$body}{qw/x y/});
-                            }
-                        } else {
-                            insert_orbital($body);
-                        }
-                    }
-                }
-            }
-
-            if ($stars->{star_count} > $page * 25) {
-                $done = 0;
+        if ($obs) {
+            my $page = 1;
+            verbose("Getting page $page of probed stars...\n");
+            my $probed_stars = $obs->get_probed_stars($page);
+            push(@stars, @{ $probed_stars->{'stars'} });
+            while ($probed_stars->{star_count} > $page * 25) {
                 $page++;
+                verbose("Getting page $page of probed stars...\n");
+                $probed_stars = $obs->get_probed_stars($page);
+                push(@stars, @{ $probed_stars->{'stars'} });
             }
         }
+
+        if ( $opts{'scan-nearby'} ) {
+            verbose("Getting scan of systems near $planet->{'name'} \n");
+            my $sector_size = 30;
+            my $map = $glc->map;
+
+            my ($x, $y) = ($planet->{'x'}, $planet->{'y'});
+            push(@stars, @{ $map->get_stars( $x - $sector_size, $y, $x, $y + $sector_size )->{'stars'} });
+            push(@stars, @{ $map->get_stars( $x, $y, $x + $sector_size, $y + $sector_size )->{'stars'} });
+            push(@stars, @{ $map->get_stars( $x - $sector_size, $y - $sector_size, $x, $y )->{'stars'} });
+            push(@stars, @{ $map->get_stars( $x, $y - $sector_size, $x + $sector_size, $y )->{'stars'} });
+
+        }
+
+        my %seen;
+        @stars = grep { ! $seen{$_->{'name'}}++ } @stars;
+
+        for my $star (@stars) {
+            if (my $row = star_exists($star->{x}, $star->{y})) {
+                if ((($row->{name}||q{}) ne $star->{name})
+                        or (($row->{color}||q{}) ne $star->{color})
+                        or (($row->{zone}||q{}) ne $star->{zone})) {
+                    update_star(@{$star}{qw/x y name color zone/})
+                } else {
+                    mark_star_checked(@{$row}{qw/x y/});
+                }
+            } else {
+                insert_star(@{$star}{qw/id name x y color zone/});
+            }
+
+            if ($star->{bodies} and @{$star->{bodies}}) {
+                for my $body (@{$star->{bodies}}) {
+                    if (my $row = orbital_exists($body->{x}, $body->{y})) {
+                        if ((($row->{type}||q{}) ne $body->{type})
+                                or (($row->{name}||q{}) ne $body->{name})
+                                or ($body->{empire} and ($row->{empire_id}||q{}) ne $body->{empire}{id})
+                                or (defined($body->{size}) and ($row->{size}||q{}) ne $body->{size}) ) {
+                            update_orbital($body);
+                        } else {
+                            mark_orbital_checked(@{$body}{qw/x y/});
+                        }
+                    } else {
+                        insert_orbital($body);
+                    }
+                }
+            }
+        }
+
     }
 }
 
