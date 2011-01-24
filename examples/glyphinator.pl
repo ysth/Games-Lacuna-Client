@@ -72,6 +72,8 @@ GetOptions(\%opts,
     'db=s',
     'send-excavators|send',
     'rebuild',
+    'fill:i',
+
     'and'                     => $batch_opt_cb,
     'max-excavators|max=s'    => $batch_opt_cb,
     'min-dist=i'              => $batch_opt_cb,
@@ -659,7 +661,7 @@ sub send_excavators {
                 last BATCH;
             }
 
-            my $count = $batch->{'max-excavators'} || $docked;
+            my $count = $batch->{'max-excavators'} // $docked;
             if ($count =~ /^(\d+)%/) {
                 $count = max(int(($1 / 100) * $originally_docked), 1);
             }
@@ -802,32 +804,68 @@ sub send_excavators {
                 }
             }
         }
+
         delete $status->{ready}{$planet}
             if !$status->{ready}{$planet};
 
+        my $build = 0;
         if ($launch_count and $opts{rebuild}) {
-            for (1..$launch_count) {
+            $build = $launch_count;
+        }
+        if (defined $opts{fill}) {
+            # Compute how many we would need to build
+
+            my $need = 0;
+            for my $yard (@{$status->{shipyards}{$planet} || []}) {
+                my $minutes = $opts{fill} || $opts{continuous} || 360;
+
+                # Get the length of a build here
+                my $buildable = $yard->{yard}->get_buildable;
+                my ($build_time) = map { $buildable->{buildable}{$_}{cost}{seconds} }
+                    grep { $_ eq 'excavator' }
+                    keys %{$buildable->{buildable}};
+
+                # Figure out how much time we'd need to fill in for
+                my $finishes = $yard->{last_finishes};
+                my $target_finish = time() + ($minutes * 60);
+                my $delta = $target_finish - $finishes;
+
+                if ($delta > 0) {
+                    $need += int($delta / $build_time) + ($delta % $build_time ? 1 : 0);
+                }
+            }
+
+            # make whichever is higher, the number calculated here, or from --rebuild
+            $build = max($build, $need);
+        }
+
+        if ($build) {
+            for (1..$build) {
                 # Add an excavator to a shipyard if we can, to wherever the
                 # shortest build queue is
 
-                output("Building an excavator on $planet to replace one sent\n");
-
                 my $yard = reduce { $a->{last_finishes} < $b->{last_finishes} ? $a : $b }
-                    @{$status->{shipyards}{$planet}};
+                    @{$status->{shipyards}{$planet} || []};
 
                 # Catch if this dies, we didnt actually confirm that we could build
                 # an excavator in this yard at this time.  Queue could be full, or
                 # we could be out of materials, etc.  This is probably cheaper than
                 # doing the get_buildable call before every single build.
                 my $ok = eval {
-                    my $build = $yard->{yard}->build_ship('excavator');
-                    my $finish = time() + $build->{building}{work}{seconds_remaining};
+                    if ($opts{'dry-run'}) {
+                        output("Would have built an excavator on $planet\n");
+                    } else {
+                        output("Building an excavator on $planet to replace one sent\n");
 
-                    push @{$status->{building}{$planet}}, {
-                        finished => $finish,
-                    };
-                    $yard->{last_finishes} = $finish;
-                    $status->{not_building}{$planet} = 0;
+                        my $build = $yard->{yard}->build_ship('excavator');
+                        my $finish = time() + $build->{building}{work}{seconds_remaining};
+
+                        push @{$status->{building}{$planet}}, {
+                            finished => $finish,
+                        };
+                        $yard->{last_finishes} = $finish;
+                        $status->{not_building}{$planet} = 0;
+                    }
                     return 1;
                 };
                 unless ($ok) {
@@ -856,7 +894,7 @@ sub pick_destination {
     my $max_squared = $max_dist * $max_dist;
     my $min_squared = $min_dist * $min_dist;
 
-    my $count       = $args{count} || 1;
+    my $count       = $args{count} // 1;
     my $current_min = $box_max;
     my $current_max = $box_min;
     my $skip        = $args{skip} || [];
@@ -1016,6 +1054,10 @@ Options:
                            database, and the database is updated to reflect your
                            new searches.
   --rebuild              - Build a new excavator for each one sent
+  --fill [<minutes>]     - Fill all shipyards with the minimum number of excavators
+                           that will take at least <minutes> (default 360) to
+                           complete.  If --continuous is specified, it will use that
+                           value if not overridden here before defaulting to 360.
   --max-excavators <n>   - Send at most this number of excavators from any colony.
                            This argument can also be specified as a percentage,
                            eg '25%'
