@@ -816,24 +816,30 @@ sub send_excavators {
             # Compute how many we would need to build
 
             my $need = 0;
+            my $minutes = $opts{fill} || $opts{continuous} || 360;
             for my $yard (@{$status->{shipyards}{$planet} || []}) {
-                my $minutes = $opts{fill} || $opts{continuous} || 360;
 
                 # Get the length of a build here
                 my $buildable = $yard->{yard}->get_buildable;
                 my ($build_time) = map { $buildable->{buildable}{$_}{cost}{seconds} }
                     grep { $_ eq 'excavator' }
                     keys %{$buildable->{buildable}};
+                verbose("An excavator will take $build_time seconds in this yard\n");
 
                 # Figure out how much time we'd need to fill in for
-                my $finishes = $yard->{last_finishes};
+                my $finishes = $yard->{last_finishes} || time();
                 my $target_finish = time() + ($minutes * 60);
                 my $delta = $target_finish - $finishes;
+                verbose("$delta seconds of build needed to fill up shipyard to $minutes minutes\n");
 
                 if ($delta > 0) {
-                    $need += int($delta / $build_time) + ($delta % $build_time ? 1 : 0);
+                    my $new = int($delta / $build_time) + ($delta % $build_time ? 1 : 0);
+                    verbose("Need $new additional excavators\n");
+                    $need += $new;
                 }
             }
+
+            verbose("Would need $need ships to fill up to $minutes minutes on $planet\n");
 
             # make whichever is higher, the number calculated here, or from --rebuild
             $build = max($build, $need);
