@@ -80,6 +80,10 @@ GetOptions(\%opts,
     'safe-zone-ok'            => $batch_opt_cb,
     'inhabited-ok'            => $batch_opt_cb,
     'furthest-first|furthest' => $batch_opt_cb,
+
+    # Allow this to run in an infinate glyph-sucking loop.  Value is
+    # minutes between cycles (default 360)
+    'continuous:i',
 ) or usage();
 push @batches, {} unless @batches;
 
@@ -132,13 +136,28 @@ if ($star_db) {
     }
 }
 
+my $finished;
 my $status;
-get_status();
-do_digs() if $opts{'do-digs'};
-send_excavators() if $opts{'send-excavators'} and $star_db;
-report_status();
-output("$glc->{total_calls} api calls made.\n");
-output("You have made $glc->{rpc_count} calls today\n");
+while (!$finished) {
+    get_status();
+    do_digs() if $opts{'do-digs'};
+    send_excavators() if $opts{'send-excavators'} and $star_db;
+    report_status();
+    output("$glc->{total_calls} api calls made.\n");
+    output("You have made $glc->{rpc_count} calls today\n");
+
+    # Clear cache before sleeping
+    $status = {};
+
+    if (defined $opts{continuous}) {
+        my $sleep = $opts{continuous} || 360;
+        output("Sleeping for $sleep minutes...\n");
+        $sleep *= 60; # minutes to seconds
+        sleep $sleep;
+    } else {
+        $finished = 1;
+    }
+}
 
 # Destroy client object prior to global destruction to avoid GLC bug
 undef $glc;
@@ -630,13 +649,14 @@ sub send_excavators {
         # them to an exclude list to simulate them being actually used.
         my %skip;
 
+        BATCH:
         for my $batch (@batches) {
             my $docked = $status->{ready}{$planet};
 
             if ($docked == 0) {
                 diag("Ran out of excavators before batches were complete!\n");
                 delete $status->{ready}{$planet};
-                next PLANET;
+                last BATCH;
             }
 
             my $count = $batch->{'max-excavators'} || $docked;
@@ -693,7 +713,7 @@ sub send_excavators {
                             update_last_sent($x, $y);
                         } else {
                             diag("Unknown error sending excavator from $planet to $dest_name!\n");
-                            next PLANET;
+                            last BATCH;
                         }
 
                         $need_more++;
@@ -981,6 +1001,10 @@ Options:
                            passed multiple times to indicate several planets.
                            If this is not specified, all relevant colonies will
                            be inspected.
+  --continuous [<min>]   - Run the program in a continuous loop until interrupted.
+                           If an argument is supplied, it should be the number of
+                           minutes to sleep between runs.  If unspecified, this is
+                           360 (6 hours).
   --do-digs              - Begin archaeology digs on any planets which are idle.
   --min-ore <amount>     - Do not begin digs with less ore in reserve than this
                            amount.  The default is 10,000.
