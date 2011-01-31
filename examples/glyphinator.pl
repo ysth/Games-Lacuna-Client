@@ -147,15 +147,16 @@ while (!$finished) {
     do_digs() if $opts{'do-digs'};
     send_excavators() if $opts{'send-excavators'} and $star_db;
     report_status();
-    output("$glc->{total_calls} api calls made.\n");
-    output("You have made $glc->{rpc_count} calls today\n");
+    output(pluralize($glc->{total_calls}, "api call") . " made.\n");
+    output("You have made " . pluralize($glc->{rpc_count}, "call") . " today\n");
 
     # Clear cache before sleeping
     $status = {};
 
     if (defined $opts{continuous}) {
         my $sleep = $opts{continuous} || 360;
-        output("Sleeping for $sleep minutes...\n");
+        my $next = localtime(time() + ($sleep * 60));
+        output("Sleeping for " . pluralize($sleep, "minute") . ", next run at $next\n");
         $sleep *= 60; # minutes to seconds
         sleep $sleep;
     } else {
@@ -256,12 +257,12 @@ sub get_status {
 
             # How many ready now?
             $status->{ready}{$planet_name} = grep { $_->{task} eq 'Docked' } @excavators;
-            verbose("$status->{ready}{$planet_name} excavators ready to launch\n");
+            verbose(pluralize($status->{ready}{$planet_name}, "excavator") . " ready to launch\n");
 
             # How many open spots?
             my $total_docks = get_spaceport_dock_count($buildings);
             $status->{open_docks}{$planet_name} = $total_docks - @ships;
-            verbose("$status->{open_docks}{$planet_name} available docks\n");
+            verbose(pluralize($status->{open_docks}{$planet_name}, "available dock") . "\n");
         } else {
             verbose("No spaceport on $planet_name\n");
         }
@@ -300,7 +301,7 @@ sub get_status {
 
                 my $last = 0;
                 if (@excavators_building) {
-                    verbose(scalar @excavators_building . " excavators building at this yard\n");
+                    verbose(pluralize(scalar @excavators_building, "excavator") . " building at this yard\n");
                     push @{$status->{building}{$planet_name}}, @excavators_building;
                     $status->{not_building}{$planet_name} = 0;
                     $last = max(map { $_->{finished} } @excavators_building);
@@ -329,7 +330,7 @@ sub report_status {
         }
         output("\n") if $cnt % 4;
         output("\n");
-        output("Current stock: $total_glyphs glyphs\n\n");
+        output("Current stock: " . pluralize($total_glyphs, "glyph") . "\n\n");
     }
 
     # Ready to go now?
@@ -362,19 +363,22 @@ END
     }
 
 
+    my $building_count = 0;
+    my $yard_count = grep { $_->{last_finishes} } map { @$_ } values %{$status->{shipyards}};
     if (grep { @{$status->{building}{$_}} } keys %{$status->{building}}
         or grep { $status->{not_building}{$_} } keys %{$status->{not_building}}) {
 
         output("Excavators building:\n");
         for my $planet (sort keys %{$status->{planets}}) {
             if ($status->{building}{$planet} and @{$status->{building}{$planet}}) {
+                $building_count += @{$status->{building}{$planet}};
                 my @sorted = sort { $a->{finished} <=> $b->{finished} }
                     @{$status->{building}{$planet}};
 
                 my $first = $sorted[0];
                 my $last = $sorted[$#sorted];
 
-                output("    ",scalar(@sorted), " excavators building on $planet, ",
+                output("    ", pluralize(scalar(@sorted), "excavator"), " building on $planet, ",
                     "first done in ", format_time($first->{finished}, $opts{'full-times'}),
                     ", last done in ", format_time($last->{finished}, $opts{'full-times'}), "\n");
 
@@ -387,6 +391,7 @@ END
     }
 
     my @events;
+    my $digging_count = @{$status->{digs}};
     for my $dig (@{$status->{digs}}) {
         push @events, {
             epoch  => $dig->{finished},
@@ -394,10 +399,11 @@ END
         };
     }
 
+    my $flying_count = @{$status->{flying}};
     for my $ship (@{$status->{flying}}) {
         push @events, {
             epoch  => $ship->{arrives},
-            detail => "Excavator from $ship->{planet} arriving at $ship->{destination} ($ship->{distance} units, $ship->{remaining} left)",
+            detail => "Excavator from $ship->{planet} arriving at $ship->{destination} (" . pluralize($ship->{distance}, "unit") . ", $ship->{remaining} left)",
         };
     }
     @events =
@@ -413,6 +419,7 @@ END
     }
 
     output("\n");
+    output("Summary: " . pluralize($flying_count, "excavator") . " in flight, " . pluralize($yard_count, "shipyard") . " building " . pluralize($building_count, "excavator") . ", " . pluralize($digging_count, "dig") . " ongoing\n\n");
 }
 
 sub normalize_planet {
@@ -679,7 +686,7 @@ sub send_excavators {
                 );
 
                 if (@dests < $count) {
-                    diag("Couldn't fetch $count destinations from $planet!\n");
+                    diag("Couldn't fetch " . pluralize($count, "destination") . " from $planet!\n");
                 }
 
                 my $all_done;
@@ -763,9 +770,9 @@ sub send_excavators {
                         } @{$ships->{available}};
 
                         if ($opts{'dry-run'}) {
-                            output("Would have sent excavator from $planet to $dest_name ($distance units, zone $zone).\n");
+                            output("Would have sent excavator from $planet to $dest_name (" . pluralize($distance, "unit") . ", zone $zone).\n");
                         } else {
-                            output("Sending excavator from $planet to $dest_name ($distance units, zone $zone)...\n");
+                            output("Sending excavator from $planet to $dest_name (" . pluralize($distance, "unit") . ", zone $zone)...\n");
                             my $launch_status = $port->send_ship($ex->{id}, {x => $x, y => $y});
 
                             if ($launch_status->{ship}->{date_arrives}) {
@@ -842,12 +849,12 @@ sub send_excavators {
 
                     if ($delta > 0) {
                         my $new = int($delta / $build_time) + ($delta % $build_time ? 1 : 0);
-                        verbose("Need $new additional excavators\n");
+                        verbose("Need " . pluralize($new, "additional excavator") . "\n");
                         $need += $new;
                     }
                 }
 
-                verbose("Would need $need ships to fill up to $minutes minutes on $planet\n");
+                verbose("Would need " . pluralize($need, "ship") . " to fill up to $minutes minutes on $planet\n");
 
                 # make whichever is higher, the number calculated here, or from --rebuild
                 $build = max($build, $need);
@@ -915,7 +922,7 @@ sub pick_destination {
 
     my $furthest = $batch->{'furthest-first'};
 
-    verbose("Seeking $count destinations for $planet\n");
+    verbose("Seeking " . pluralize($count, "destination") . " for $planet\n");
 
     my @results;
     while (@results < $count and ($furthest ? $current_min > 0 : $current_max < $box_max)) {
@@ -994,7 +1001,7 @@ SQL
         while (my $row = $find_dest->fetchrow_hashref) {
             my $dest_name = "$row->{name} $row->{orbit}";
             my $dist = int(sqrt($row->{dist}));
-            verbose("Selected destination $dest_name, which is $dist units away\n");
+            verbose("Selected destination $dest_name, which is " . pluralize($dist, "unit") . " away\n");
 
             my $zone = $row->{zone};
             unless ($zone) {
