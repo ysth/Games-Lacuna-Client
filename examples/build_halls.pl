@@ -9,7 +9,7 @@ use warnings;
 use FindBin;
 use Getopt::Long;
 use Data::Dumper;
-use List::Util qw(first min max);
+use List::Util qw(first min max sum);
 
 use lib "$FindBin::Bin/../lib";
 use Games::Lacuna::Client;
@@ -105,14 +105,10 @@ for my $planet_name (sort keys %planets) {
     }
 }
 
-my $built = 0;
-my $possible = 0;
+my (%possible_builds, $all_possible);
 for my $i (0..$#recipes) {
     next if $opts{type} and not $build_types{$i};
-
-    my @builds;
-
-    my $which = $i + 1;
+    my $type = $i + 1;
 
     # Determine how many of each we're able to build
     PLANET:
@@ -120,63 +116,77 @@ for my $i (0..$#recipes) {
         my $can_build_here = min(
             map { $glyphs{$planet}{$_} ? scalar @{$glyphs{$planet}{$_}}: 0 } @{$recipes[$i]}
         );
-        verbose("$planet can build $can_build_here Halls #$which\n")
+
+        output("$planet can build $can_build_here Halls #$type\n")
             if $can_build_here;
 
-        if ($can_build_here + $plan_count{$planet} > 20) {
-            if ($plan_count{$planet} >= 20) {
-                output("$planet is full of plans!\n");
-                next PLANET;
-            } else {
-                my $new = 20 - $plan_count{$planet};
-                output("Too many plans on $planet, reducing from $can_build_here to $new\n");
-                $can_build_here = $new;
-            }
-        }
-
         for my $j (0 .. $can_build_here - 1) {
-            push @builds, {
+            push @{$possible_builds{$type}}, {
                 planet => $planet,
                 arch   => $archmins{$planet},
+                type   => $type,
                 glyphs => [
                     map { $glyphs{$planet}{$_}[$j] } @{$recipes[$i]}
                 ],
             };
+            $all_possible++;
         }
-    }
-
-    # Do builds
-    my $how_many = max(@builds - ($opts{'use-last'} ? 0 : 1), 0);
-    $how_many = min($opts{max} - $built, $how_many) if $opts{max};
-
-    $built += $how_many;
-    $possible += @builds;
-
-    for (0 .. $how_many - 1) {
-        my $build = $builds[$_];
-        if ($opts{'dry-run'}) {
-            output("Would have built a Halls #$which on $build->{planet}\n");
-        } else {
-            output("Building a Halls #$which on $build->{planet}\n");
-            $build->{arch}->assemble_glyphs($build->{glyphs});
-        }
-        $plan_count{$build->{planet}}++;
     }
 }
 
+# Drop one from each type unless we're allowed to use all glyphs
+unless ($opts{'use-last'}) {
+    verbose("Not using last, dropping one of each type\n");
+    pop @{$possible_builds{$_}} for keys %possible_builds;
+}
 
-if ($built) {
-    if ($built > $possible) {
-        my $diff = $possible - $built;
+# Do builds
+my $total = sum(map { scalar @{$possible_builds{$_}} } keys %possible_builds);
+my $need = $opts{max} ? min($opts{max}, $total) : $total;
+verbose("Planning to build $need Halls\n");
+
+# First grab approximately the right percentage from each set
+my @builds;
+for my $type (keys %possible_builds) {
+    my $have = @{$possible_builds{$type}};
+    my $grab = int(($have / $total) * $need);
+    verbose("Grabbing $grab of type $type\n");
+    for (1..$grab) {
+        push @builds, pop @{$possible_builds{$type}};
+    }
+}
+
+while (@builds < $need) {
+    my ($type) = sort { @{$possible_builds{$b}} <=> @{$possible_builds{$a}}} keys %possible_builds;
+    verbose("Not enough (" . scalar(@builds) . " of $need), taking another $type\n");
+    push @builds, pop @{$possible_builds{$type}};
+}
+
+for my $build (sort { $a->{type} cmp $b->{type} } @builds) {
+    if ($opts{'dry-run'}) {
+        output("Would have built a Halls #$build->{type} on $build->{planet}\n");
+    } else {
+        output("Building a Halls #$build->{type} on $build->{planet}\n");
+        $build->{arch}->assemble_glyphs($build->{glyphs});
+    }
+    $plan_count{$build->{planet}}++;
+}
+
+if (@builds) {
+    if ($all_possible > $need) {
+        my $diff = $all_possible - $need;
         output("$diff more Halls are possible, specify --use-last if you want to build all possible Halls\n");
     }
 } else {
-    if ($possible) {
-        output("No Halls built ($possible possible), specify --use-last if you want to build all possible Halls\n");
+    if ($total) {
+        output("No Halls built ($all_possible possible), specify --use-last if you want to build all possible Halls\n");
     } else {
         output("Not enough glyphs to build any Halls recipes, sorry\n");
     }
 }
+
+output("$glc->{total_calls} api calls made.\n");
+output("You have made $glc->{rpc_count} calls today\n");
 
 sub normalize_planet {
     my ($planet_name) = @_;
