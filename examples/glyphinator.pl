@@ -1097,6 +1097,8 @@ Options:
   --safe-zone-ok         - Ok to send excavators to -3|0, the neutral zone
   --inhabited-ok         - Ok to send excavators to inhabited planets
   --furthest-first       - Select the furthest away rather than the closest
+  --random-dist          - Select random distances within the specified range
+                           instead of the closest or furthest.
   --dry-run              - Don't actually take any action, just report status and
                            what actions would have taken place.
   --full-times           - Specify timestamps in full precision instead of rounded
