@@ -149,7 +149,7 @@ verbose("Planning to build $need Halls\n");
 my @builds;
 for my $type (keys %possible_builds) {
     my $have = @{$possible_builds{$type}};
-    my $grab = int(($have / $total) * $need);
+    my $grab = $total ? int(($have / $total) * $need) : 0;
     verbose("Grabbing $grab of type $type\n");
     for (1..$grab) {
         push @builds, pop @{$possible_builds{$type}};
