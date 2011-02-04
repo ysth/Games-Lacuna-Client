@@ -30,6 +30,7 @@ use feature ':5.10';
 use DBI;
 use FindBin;
 use List::Util qw(first min max sum reduce);
+use POSIX qw(ceil);
 use Date::Parse qw(str2time);
 use Math::Round qw(round);
 use Getopt::Long;
@@ -157,11 +158,22 @@ while (!$finished) {
         diag("Error during run: $@\n");
     }
 
-    # Clear cache before sleeping
-    $status = {};
-
     if (defined $opts{continuous}) {
         my $sleep = $opts{continuous} || 360;
+
+        if ($opts{'do-digs'} and $status->{digs}) {
+            my $now = time();
+            my ($last_dig) =
+                map  { ceil(($_->{finished} - $now) / 60) }
+                sort { $b->{finished} <=> $a->{finished} }
+                @{$status->{digs}};
+
+            $sleep = min($sleep, $last_dig);
+        }
+
+        # Clear cache before sleeping
+        $status = {};
+
         my $next = localtime(time() + ($sleep * 60));
         output("Sleeping for " . pluralize($sleep, "minute") . ", next run at $next\n");
         $sleep *= 60; # minutes to seconds
@@ -1078,8 +1090,10 @@ Options:
                            be inspected.
   --continuous [<min>]   - Run the program in a continuous loop until interrupted.
                            If an argument is supplied, it should be the number of
-                           minutes to sleep between runs.  If unspecified, this is
-                           360 (6 hours).
+                           minutes to sleep between runs.  If unspecified, the
+                           default is 360 (6 hours).  If all arch digs will finish
+                           before the next scheduled loop and --do-digs is specified,
+                           it will instead run at that time.
   --do-digs              - Begin archaeology digs on any planets which are idle.
   --min-ore <amount>     - Do not begin digs with less ore in reserve than this
                            amount.  The default is 10,000.
