@@ -97,10 +97,6 @@ if ($opts{planet}) {
     %do_planets = map { normalize_planet($_) => 1 } @{$opts{planet}};
 }
 
-my $glc = Games::Lacuna::Client->new(
-    cfg_file => $opts{config} || "$FindBin::Bin/../lacuna.yml",
-);
-
 my $star_util = "$FindBin::Bin/star_db_util.pl";
 no warnings 'once';
 my $db_file = $opts{db} || "$FindBin::Bin/../stars.db";
@@ -139,16 +135,27 @@ if ($star_db) {
     }
 }
 
-my $finished;
-my $status;
+my ($finished, $status, $glc);
 while (!$finished) {
-    output("Starting up at " . localtime() . "\n");
-    get_status();
-    do_digs() if $opts{'do-digs'};
-    send_excavators() if $opts{'send-excavators'} and $star_db;
-    report_status();
-    output(pluralize($glc->{total_calls}, "api call") . " made.\n");
-    output("You have made " . pluralize($glc->{rpc_count}, "call") . " today\n");
+    eval {
+        # We'll create this inside the loop for a couple reasons, primarily
+        # that it gives us a chance to reauth each time through the loop, in
+        # case you get the "Session expired" error.
+        $glc = Games::Lacuna::Client->new(
+            cfg_file => $opts{config} || "$FindBin::Bin/../lacuna.yml",
+        );
+
+        output("Starting up at " . localtime() . "\n");
+        get_status();
+        do_digs() if $opts{'do-digs'};
+        send_excavators() if $opts{'send-excavators'} and $star_db;
+        report_status();
+        output(pluralize($glc->{total_calls}, "api call") . " made.\n");
+        output("You have made " . pluralize($glc->{rpc_count}, "call") . " today\n");
+    };
+    if ($@) {
+        diag("Error during run: $@\n");
+    }
 
     # Clear cache before sleeping
     $status = {};
