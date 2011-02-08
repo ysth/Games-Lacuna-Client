@@ -138,7 +138,7 @@ if ($star_db) {
 
 my ($finished, $status, $glc);
 while (!$finished) {
-    eval {
+    my $ok = eval {
         # We'll create this inside the loop for a couple reasons, primarily
         # that it gives us a chance to reauth each time through the loop, in
         # case you get the "Session expired" error.
@@ -153,9 +153,24 @@ while (!$finished) {
         report_status();
         output(pluralize($glc->{total_calls}, "api call") . " made.\n");
         output("You have made " . pluralize($glc->{rpc_count}, "call") . " today\n");
+        return 1;
     };
-    if ($@) {
+    unless ($ok) {
+        my $e = $@;
+
         diag("Error during run: $@\n");
+
+        if (my $e = Exception::Class->caught('LacunaRPCException')) {
+            if ($e->code eq '1006' and $e->text =~ /Session expired/) {
+                diag("Caught Session expired error, retrying\n");
+                $status = {};
+                redo;
+            }
+            $e->rethrow;
+        } else {
+            my $e = Exception::Class->caught();
+            ref $e ? $e->rethrow : die $e;
+        }
     }
 
     if (defined $opts{continuous}) {
@@ -410,7 +425,7 @@ END
     }
 
     my @events;
-    my $digging_count = @{$status->{digs}};
+    my $digging_count = @{$status->{digs} || []};
     for my $dig (@{$status->{digs}}) {
         push @events, {
             epoch  => $dig->{finished},
@@ -418,8 +433,8 @@ END
         };
     }
 
-    my $flying_count = @{$status->{flying}};
-    for my $ship (@{$status->{flying}}) {
+    my $flying_count = @{$status->{flying} || []};
+    for my $ship (@{$status->{flying} || []}) {
         push @events, {
             epoch  => $ship->{arrives},
             detail => "Excavator from $ship->{planet} arriving at $ship->{destination} (" . pluralize($ship->{distance}, "unit") . ", $ship->{remaining} left)",
@@ -730,10 +745,12 @@ sub send_excavators {
                                     $need_more++;
                                     next;
                                 }
+
+                                diag("Unknown error sending excavator from $planet to $dest_name: $e\n");
                             }
                             else {
                                 my $e = Exception::Class->caught();
-                                ref $e ? $e->rethrow : die $e;
+                                diag("Unknown error sending excavator from $planet to $dest_name: $e\n");
                             }
                         }
 
