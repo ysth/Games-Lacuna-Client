@@ -140,13 +140,15 @@ if ($opts{'merge-db'}) {
             if (($orbital->{checked_epoch}||0) > ($row->{checked_epoch}||0)) {
                 update_orbital( {
                     empire => { id => $orbital->{empire_id} },
-                    map { $_ => $orbital->{$_} } qw/x y type name/,
+                    (map { $_ => $orbital->{$_} } qw/x y type name water size/),
+                    ore => { map { $_ => $orbital->{$_} } ore_types() },
                 } );
             }
         } else {
             insert_orbital( {
                 empire => { id =>  $orbital->{empire_id} },
-                map { $_ => $orbital->{$_} } qw/body_id star_id orbit x y type name/,
+                (map { $_ => $orbital->{$_} } qw/body_id star_id orbit x y type name water size/),
+                ore => { map { $_ => $orbital->{$_} } ore_types() },
             } );
         }
     }
