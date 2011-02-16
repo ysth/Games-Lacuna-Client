@@ -141,7 +141,7 @@ unless ($opts{'use-last'}) {
 }
 
 # Do builds
-my $total = sum(map { scalar @{$possible_builds{$_}} } keys %possible_builds);
+my $total = sum(map { scalar @{$possible_builds{$_}} } keys %possible_builds) || 0;
 my $need = $opts{max} ? min($opts{max}, $total) : $total;
 verbose("Planning to build $need Halls\n");
 
