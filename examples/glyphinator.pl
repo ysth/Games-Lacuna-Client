@@ -183,7 +183,9 @@ while (!$finished) {
                 sort { $b->{finished} <=> $a->{finished} }
                 @{$status->{digs}};
 
-            $sleep = min($sleep, $last_dig);
+            if (defined $last_dig) {
+                $sleep = min($sleep, $last_dig);
+            }
         }
 
         # Clear cache before sleeping
@@ -632,11 +634,18 @@ sub do_digs {
                 output("Would have started a dig for $ore on $planet.\n");
             } else {
                 output("Starting a dig for $ore on $planet...\n");
-                $status->{archmin}{$planet}->search_for_glyph($ore);
-                push @{$status->{digs}}, {
-                    planet   => $planet,
-                    finished => time() + (6 * 60 * 60),
+                my $ok = eval {
+                    $status->{archmin}{$planet}->search_for_glyph($ore);
+                    push @{$status->{digs}}, {
+                        planet   => $planet,
+                        finished => time() + (6 * 60 * 60),
+                    };
+                    return 1;
                 };
+                unless ($ok) {
+                    my $e = $@;
+                    diag("Error starting dig: $e\n");
+                }
             }
             delete $status->{idle}{$planet};
         } else {
