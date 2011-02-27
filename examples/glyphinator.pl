@@ -935,8 +935,11 @@ sub send_excavators {
                         return 1;
                     };
                     unless ($ok) {
+                        # Assume that build errors mean that we're out of spaceport
+                        # or shipyard slots, or resources, or something else non-recoverable
                         my $e = $@;
                         diag("Error rebuilding: $e\n");
+                        last;
                     }
                 }
             }
