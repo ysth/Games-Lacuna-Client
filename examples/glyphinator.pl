@@ -685,7 +685,7 @@ BEGIN {
         bleeder observatory_seeker spaceport_seeker
         placebo placebo2 placebo3 placebo4 placebo5 placebo6
         scow security_ministry_seeker
-        snark snark2 snark3 spy_pod spy_shuttle sweeper thud
+        snark snark2 snark3 spy_pod spy_shuttle thud
     /;
 }
 sub send_excavators {
