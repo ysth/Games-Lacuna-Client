@@ -14,6 +14,7 @@ use FindBin;
 use List::Util qw(first);
 use Getopt::Long;
 use Data::Dumper;
+use POSIX qw(strftime);
 
 use lib "$FindBin::Bin/../lib";
 use Games::Lacuna::Client;
@@ -58,7 +59,7 @@ if (-f $db_file) {
     } else {
         # Check if db is current, if not, suggest upgrade
         my $ok = eval {
-            $star_db->do('select size from orbitals limit 1');
+            $star_db->do('select id from empires limit 1');
             return 1;
         };
         unless ($ok) {
@@ -109,10 +110,10 @@ if ($opts{'merge-db'}) {
     while (my $star = $get_stars->fetchrow_hashref) {
         if (my $row = star_exists($star->{x}, $star->{y})) {
             if (($star->{checked_epoch}||0) > ($row->{checked_epoch}||0)) {
-                update_star(@{$star}{qw/x y name color zone/})
+                update_star($star)
             }
         } else {
-            insert_star(@{$star}{qw/id name x y color zone/});
+            insert_star($star);
         }
     }
 
@@ -142,6 +143,7 @@ if ($opts{'merge-db'}) {
                     empire => { id => $orbital->{empire_id} },
                     (map { $_ => $orbital->{$_} } qw/x y type name water size/),
                     ore => { map { $_ => $orbital->{$_} } ore_types() },
+                    last_checked => $orbital->{last_checked},
                 } );
             }
         } else {
@@ -149,7 +151,26 @@ if ($opts{'merge-db'}) {
                 empire => { id =>  $orbital->{empire_id} },
                 (map { $_ => $orbital->{$_} } qw/body_id star_id orbit x y type name water size/),
                 ore => { map { $_ => $orbital->{$_} } ore_types() },
+                last_checked => $orbital->{last_checked},
             } );
+        }
+    }
+
+    $ok = eval {
+        my $get_empires = $merge_db->prepare('select * from empires');
+        $get_empires->execute;
+        while (my $empire = $get_empires->fetchrow_hashref) {
+            update_empire($empire);
+        }
+        return 1;
+    };
+    unless ($ok) {
+        my $e = $@;
+        if ($e =~ /no such table/) {
+            output("$opts{'merge-db'} is outdated, it should be upgraded and re-fetched\n");
+        }
+        else {
+            die $e;
         }
     }
 
@@ -212,12 +233,12 @@ unless ($opts{'no-fetch'}) {
                 if ((($row->{name}||q{}) ne $star->{name})
                         or (($row->{color}||q{}) ne $star->{color})
                         or (($row->{zone}||q{}) ne $star->{zone})) {
-                    update_star(@{$star}{qw/x y name color zone/})
+                    update_star($star)
                 } else {
                     mark_star_checked(@{$row}{qw/x y/});
                 }
             } else {
-                insert_star(@{$star}{qw/id name x y color zone/});
+                insert_star($star);
             }
 
             if ($star->{bodies} and @{$star->{bodies}}) {
@@ -275,11 +296,14 @@ sub ore_types {
 {
     my $insert_star;
     sub insert_star {
-        my ($id, $name, $x, $y, $color, $zone) = @_;
+        my ($star) = @_;
+        my ($id, $name, $x, $y, $color, $zone) = @{$star}{qw/id name x y color zone/};
+
+        my $when = $star->{last_checked} || strftime "%Y-%m-%d %T", gmtime;
 
         output("Inserting star $name at $x, $y\n");
-        $insert_star ||= $star_db->prepare('insert into stars (id, name, x, y, color, zone) values (?,?,?,?,?,?)');
-        $insert_star->execute($id, $name, $x, $y, $color, $zone)
+        $insert_star ||= $star_db->prepare('insert into stars (id, name, x, y, color, zone, last_checked) values (?,?,?,?,?,?,?)');
+        $insert_star->execute($id, $name, $x, $y, $color, $zone, $when)
             or die "Can't insert star: " . $insert_star->errstr;
     }
 }
@@ -287,10 +311,14 @@ sub ore_types {
 {
     my $update_star;
     sub update_star {
-        my ($x, $y, $name, $color, $zone) = @_;
+        my ($star) = @_;
+        my ($x, $y, $name, $color, $zone) = @{$star}{qw/x y name color zone/};
+
+        my $when = $star->{last_checked} || strftime "%Y-%m-%d %T", gmtime;
+
         output("Updating star at $x, $y to name $name, color $color, zone $zone\n");
-        $update_star ||= $star_db->prepare(q{update stars set last_checked = datetime('now'), name = ?, color = ?, zone = ? where x = ? and y = ?});
-        $update_star->execute($name, $color, $zone, $x, $y);
+        $update_star ||= $star_db->prepare(q{update stars set last_checked = ?, name = ?, color = ?, zone = ? where x = ? and y = ?});
+        $update_star->execute($when, $name, $color, $zone, $x, $y);
     }
 }
 
@@ -322,17 +350,20 @@ sub ore_types {
         my @body_fields = qw{ body_id star_id orbit x y type name water size };
         output(sprintf  "Inserting %s at %d, %d\n", $body->{'type'}, $body->{'x'}, $body->{'y'});
 
+        my $when = $body->{last_checked} || strftime "%Y-%m-%d %T", gmtime;
+
         my $insert_statement =
-            q{insert into orbitals ( }
+            q{insert into orbitals (last_checked, }
             . join(", ",
                 @body_fields, ore_types(),
                 'empire_id'
             )
-            . ') values ('
+            . ') values (?,'
             . join(',', map { "?" } @body_fields, ore_types(), 'empire_id' )
             . ')';
 
         my @insert_vars = (
+            $when,
             ( map { $body->{$_} } @body_fields ),
             ( map { $body->{'ore'}->{$_} } ore_types() ),
             $body->{'empire'}->{'id'},
@@ -341,6 +372,8 @@ sub ore_types {
         $insert_orbital ||= $star_db->prepare($insert_statement);
         $insert_orbital->execute(@insert_vars)
             or die( "Can't insert orbital: " . $insert_orbital->errstr);
+
+        update_empire($body->{empire}) if $body->{empire} and $body->{empire}{name};
     }
 }
 
@@ -351,15 +384,19 @@ sub ore_types {
 
         my @body_fields = qw{ type name x y water size };
         output(sprintf  "Updating %s at %d, %d\n", $body->{'type'}, $body->{'x'}, $body->{'y'});
+
+        my $when = $body->{last_checked} || strftime "%Y-%m-%d %T", gmtime;
+
         my $update_statement =
             join(", ",
-                q{update orbitals set last_checked = datetime('now') },
+                q{update orbitals set last_checked = ? },
                 ( map { "$_ = ?" } @body_fields, ore_types() ),
                 'empire_id = ?'
             )
             . ' where x = ? and y = ?';
 
         my @update_vars = (
+            $when,
             ( map { $body->{$_} } @body_fields ),
             ( map { $body->{'ore'}->{$_} } ore_types() ),
         );
@@ -368,6 +405,20 @@ sub ore_types {
 
         $update_orbital->execute(@update_vars)
             or die("Can't update orbital: " . $update_orbital->errstr);
+
+        update_empire($body->{empire}) if $body->{empire} and $body->{empire}{name};
+    }
+}
+
+sub update_empire {
+    my $empire = shift;
+
+    return unless defined $empire->{id};
+
+    my $exists = $star_db->selectrow_hashref('select * from empires where id = ?', {}, $empire->{id});
+    unless ($exists) {
+        output("Inserting empire $empire->{name} ($empire->{id})\n");
+        $star_db->do('insert into empires (id, name) values (?,?)', {}, $empire->{id}, $empire->{name});
     }
 }
 
@@ -497,6 +548,13 @@ sub upgrade_star_db {
                 'alter table orbitals add water int',
                 'alter table orbitals add size int',
                 map { "alter table orbitals add $_ int" } ore_types(),
+            ],
+        ],
+        [
+            'select id from empires limit 1',
+            [
+                'create table empires (id int, name text)',
+                'create index empire_id on empires(id)',
             ],
         ],
     );
