@@ -31,6 +31,7 @@ GetOptions(\%opts,
     'merge-db=s',
     'planet=s@',
     'no-fetch',
+    'no-vacuum',
     'scan-nearby',
 );
 
@@ -84,15 +85,19 @@ if (-f $db_file) {
 $star_db->{AutoCommit} = 0;
 
 if ($opts{'merge-db'}) {
-    my $merge_db = DBI->connect("dbi:SQLite:$opts{'merge-db'}")
-        or die "Can't open star database $opts{'merge-db'}: $DBI::errstr\n";
-    $merge_db->{RaiseError} = 1;
-    $merge_db->{PrintError} = 0;
+    $star_db->{AutoCommit} = 1;
+    $star_db->do('attach database ? as d2', {}, $opts{'merge-db'});
+    $star_db->{AutoCommit} = 0;
 
     # Copy stars
     my $get_stars;
     my $ok = eval {
-        $get_stars = $merge_db->prepare(q{select *, strftime('%s',last_checked) checked_epoch from stars});
+        $get_stars = $star_db->prepare(<<SQL);
+select s2.*, strftime('%s', s2.last_checked) checked_epoch
+from d2.stars s2
+join stars s1 on s1.id = s2.id
+    and s2.last_checked > coalesce(s1.last_checked,0)
+SQL
         $get_stars->execute;
         return 1;
     };
@@ -100,7 +105,7 @@ if ($opts{'merge-db'}) {
         my $e = $@;
         if ($e =~ /no such column/) {
             output("$opts{'merge-db'} is outdated, it should be upgraded and re-fetched\n");
-            $get_stars = $merge_db->prepare(q{select *, 0 checked_epoch from stars});
+            $get_stars = $star_db->prepare(q{select *, 0 checked_epoch from d2.stars});
             $get_stars->execute;
 
         } else {
@@ -120,7 +125,13 @@ if ($opts{'merge-db'}) {
     # Copy orbitals
     my $get_orbitals;
     $ok = eval {
-        $get_orbitals = $merge_db->prepare(q{select *, strftime('%s',last_checked) checked_epoch, size from orbitals});
+        $get_orbitals = $star_db->prepare(<<SQL);
+select o2.*, strftime('%s', o2.last_checked) checked_epoch
+from d2.orbitals o2
+join orbitals o1 on o1.star_id = o2.star_id
+    and o1.orbit = o2.orbit
+    and o2.last_checked > coalesce(o1.last_checked,0)
+SQL
         $get_orbitals->execute;
         return 1;
     };
@@ -128,7 +139,7 @@ if ($opts{'merge-db'}) {
         my $e = $@;
         if ($e =~ /no such column/) {
             output("$opts{'merge-db'} is outdated, it should be upgraded and re-fetched\n");
-            $get_orbitals = $merge_db->prepare(q{select *, 0 checked_epoch from orbitals});
+            $get_orbitals = $star_db->prepare(q{select *, 0 checked_epoch from d2.orbitals});
             $get_orbitals->execute;
 
         } else {
@@ -157,7 +168,7 @@ if ($opts{'merge-db'}) {
     }
 
     $ok = eval {
-        my $get_empires = $merge_db->prepare('select * from empires');
+        my $get_empires = $star_db->prepare('select * from d2.empires');
         $get_empires->execute;
         while (my $empire = $get_empires->fetchrow_hashref) {
             update_empire($empire);
@@ -265,11 +276,15 @@ unless ($opts{'no-fetch'}) {
 $star_db->commit;
 
 # SQLite can't vacuum in a transaction
-verbose("Vacuuming database\n");
-$star_db->{AutoCommit} = 1;
-$star_db->do('vacuum');
+    unless ($opts{'no-vacuum'}) {
+    verbose("Vacuuming database\n");
+    $star_db->{AutoCommit} = 1;
+    $star_db->do('vacuum');
+}
 
-output("$db_file is now up-to-date with your probe data\n");
+unless ($opts{'no-fetch'}) {
+    output("$db_file is now up-to-date with your probe data\n");
+}
 
 output("$glc->{total_calls} api calls made.\n") if $glc->{total_calls};
 undef $glc;
@@ -597,6 +612,7 @@ Options:
   --upgrade              - Update database if any schema changes are required.
   --merge-db <file>      - Copy missing data from another database file
   --no-fetch             - Don't fetch probe data, only merge databases
+  --no-vacuum            - Don't vacuum the db when finished
   --planet <name>        - Specify a planet to process.  This option can be
                            passed multiple times to indicate several planets.
                            If this is not specified, all relevant colonies will
