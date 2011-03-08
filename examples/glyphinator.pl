@@ -74,6 +74,7 @@ GetOptions(\%opts,
     'send-excavators|send',
     'rebuild',
     'fill:i',
+    'max-build=i',
 
     'and'                     => $batch_opt_cb,
     'max-excavators|max=s'    => $batch_opt_cb,
@@ -709,6 +710,7 @@ sub send_excavators {
     for my $planet (keys %{$status->{planets}}) {
 
         my $launch_count;
+        my $built_count = 0;
         if ($status->{ready}{$planet}) {
             verbose("Prepping excavators on $planet\n");
             my $port = $status->{spaceports}{$planet};
@@ -767,7 +769,7 @@ sub send_excavators {
                                 if (my $e = Exception::Class->caught('LacunaRPCException')) {
                                     if ($e->code eq '1002') {
                                         # Empty orbit, update db and try again
-                                        output("$dest_name is an empty orbutt, trying again...\n");
+                                        output("$dest_name is an empty orbit, trying again...\n");
                                         mark_orbit_empty($x, $y);
 
                                         $need_more++;
@@ -933,6 +935,9 @@ sub send_excavators {
                 $build = max($build, $need);
             }
 
+            $build = min($build - $built_count, $opts{'max-build'} - $built_count)
+                if defined $opts{'max-build'};
+
             if ($build) {
                 for (1..$build) {
                     # Add an excavator to a shipyard if we can, to wherever the
@@ -960,6 +965,7 @@ sub send_excavators {
                             $yard->{last_finishes} = $finish;
                             $status->{not_building}{$planet} = 0;
                         }
+                        $built_count++;
                         return 1;
                     };
                     unless ($ok) {
@@ -1168,6 +1174,8 @@ Options:
                            that will take at least <minutes> (default 360) to
                            complete.  If --continuous is specified, it will use that
                            value if not overridden here before defaulting to 360.
+  --max-build <n>        - Build at most <n> excavators on each colony, after the
+                           --rebuild and/or --fill rules are computed.
   --max-excavators <n>   - Send at most this number of excavators from any colony.
                            This argument can also be specified as a percentage,
                            eg '25%'
