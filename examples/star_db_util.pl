@@ -60,7 +60,7 @@ if (-f $db_file) {
     } else {
         # Check if db is current, if not, suggest upgrade
         my $ok = eval {
-            $star_db->do('select id from empires limit 1');
+            $star_db->do('select subtype from orbitals limit 1');
             return 1;
         };
         unless ($ok) {
@@ -155,6 +155,7 @@ SQL
                     (map { $_ => $orbital->{$_} } qw/x y type name water size/),
                     ore => { map { $_ => $orbital->{$_} } ore_types() },
                     last_checked => $orbital->{last_checked},
+                    image => $orbital->{subtype},
                 } );
             }
         } else {
@@ -163,6 +164,7 @@ SQL
                 (map { $_ => $orbital->{$_} } qw/body_id star_id orbit x y type name water size/),
                 ore => { map { $_ => $orbital->{$_} } ore_types() },
                 last_checked => $orbital->{last_checked},
+                image => $orbital->{subtype},
             } );
         }
     }
@@ -371,17 +373,22 @@ sub ore_types {
             q{insert into orbitals (last_checked, }
             . join(", ",
                 @body_fields, ore_types(),
-                'empire_id'
+                'empire_id', 'subtype'
             )
             . ') values (?,'
-            . join(',', map { "?" } @body_fields, ore_types(), 'empire_id' )
+            . join(',', map { "?" } @body_fields, ore_types(), 'empire_id', 'subtype')
             . ')';
 
+        my $subtype;
+        if (defined $body->{'image'}) {
+            ($subtype = $body->{'image'}) =~ s/-.*//;
+        }
         my @insert_vars = (
             $when,
             ( map { $body->{$_} } @body_fields ),
             ( map { $body->{'ore'}->{$_} } ore_types() ),
             $body->{'empire'}->{'id'},
+            $subtype,
         );
 
         $insert_orbital ||= $star_db->prepare($insert_statement);
@@ -406,7 +413,7 @@ sub ore_types {
             join(", ",
                 q{update orbitals set last_checked = ? },
                 ( map { "$_ = ?" } @body_fields, ore_types() ),
-                'empire_id = ?'
+                'empire_id = ?, subtype = ?'
             )
             . ' where x = ? and y = ?';
 
@@ -415,7 +422,11 @@ sub ore_types {
             ( map { $body->{$_} } @body_fields ),
             ( map { $body->{'ore'}->{$_} } ore_types() ),
         );
-        push( @update_vars, $body->{'empire'}->{'id'}, $body->{'x'}, $body->{'y'} );
+        my $subtype;
+        if (defined $body->{'image'}) {
+            ($subtype = $body->{'image'}) =~ s/-.*//;
+        }
+        push( @update_vars, $body->{'empire'}->{'id'}, $subtype, $body->{'x'}, $body->{'y'} );
         $update_orbital ||= $star_db->prepare($update_statement);
 
         $update_orbital->execute(@update_vars)
@@ -490,6 +501,7 @@ CREATE TABLE orbitals (
     x              int,
     y              int,
     type           text,
+    subtype        text,
     last_excavated datetime,
     name           text,
 
@@ -523,10 +535,19 @@ CREATE TABLE orbitals (
 )
 SQL
         <<SQL,
+CREATE TABLE empires (
+    id int,
+    name text
+)
+SQL
+        <<SQL,
 CREATE INDEX orbital_x_y on orbitals(x,y)
 SQL
         <<SQL,
 CREATE INDEX zone on stars(zone)
+SQL
+        <<SQL,
+CREATE INDEX empire_id on empires(id)
 SQL
 }
 
@@ -570,6 +591,12 @@ sub upgrade_star_db {
             [
                 'create table empires (id int, name text)',
                 'create index empire_id on empires(id)',
+            ],
+        ],
+        [
+            'select subtype from orbitals limit 1',
+            [
+                'alter table orbitals add subtype text',
             ],
         ],
     );
