@@ -75,6 +75,7 @@ GetOptions(\%opts,
     'rebuild',
     'fill:i',
     'max-build=i',
+    'save-spots=i',
 
     'and'                     => $batch_opt_cb,
     'max-excavators|max=s'    => $batch_opt_cb,
@@ -937,6 +938,11 @@ sub send_excavators {
             $build = min($build - $built_count, $opts{'max-build'} - $built_count)
                 if defined $opts{'max-build'};
 
+            verbose("Saving $opts{'save-spots'} spaceport spots\n") if $opts{'save-spots'};
+
+            # reduce $build to at most the number of open spaceport slots, holding some open if requested
+            $build = min($build, $status->{open_docks}{$planet} - ($opts{'save-spots'} || 0));
+
             if ($build) {
                 for (1..$build) {
                     # Add an excavator to a shipyard if we can, to wherever the
@@ -1175,6 +1181,7 @@ Options:
                            value if not overridden here before defaulting to 360.
   --max-build <n>        - Build at most <n> excavators on each colony, after the
                            --rebuild and/or --fill rules are computed.
+  --save-spots <n>       - Leave at least <n> Spaceport spots unfilled
   --max-excavators <n>   - Send at most this number of excavators from any colony.
                            This argument can also be specified as a percentage,
                            eg '25%'
