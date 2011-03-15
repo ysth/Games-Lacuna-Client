@@ -27,6 +27,7 @@ use Class::XSAccessor {
     session_timeout
     session_persistent
     cfg_file
+    rpc_sleep
     prompt_captcha
   )],
 };

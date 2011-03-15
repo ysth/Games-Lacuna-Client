@@ -79,6 +79,9 @@ sub call {
         );
         my $resp = $self->ua->request($req);
 
+        # Throttle per 3.0 changes
+        sleep($self->{client}->rpc_sleep) if $self->{client}->rpc_sleep;
+
         $res = $self->marshal->response_to_result($resp);
 
         if ($res and $res->error and $res->error->code eq '1016'
