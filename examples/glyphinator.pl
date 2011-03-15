@@ -158,7 +158,9 @@ while (!$finished) {
         # that it gives us a chance to reauth each time through the loop, in
         # case you get the "Session expired" error.
         $glc = Games::Lacuna::Client->new(
-            cfg_file => $opts{config} || "$FindBin::Bin/../lacuna.yml",
+            cfg_file       => $opts{config} || "$FindBin::Bin/../lacuna.yml",
+            rpc_sleep      => 1,
+            prompt_captcha => 1,
         );
 
         output("Starting up at " . localtime() . "\n");
@@ -189,6 +191,9 @@ while (!$finished) {
     }
 
     if (defined $opts{continuous}) {
+        diag("WARNING!!!!! Captcha prompt will cause script hang if you are not here to answer!\n")
+            if $opts{'send-excavators'};
+
         my $sleep = $opts{continuous} || 360;
 
         if ($opts{'do-digs'} and $status->{digs}) {
@@ -272,14 +277,8 @@ sub get_status {
             $status->{spaceports}{$planet_name} = $spaceport;
 
             # How many in flight?  When arrives?
-            my $page = 1;
-            my (@ships, $ship_count);
-            while (!defined $ship_count or @ships < $ship_count) {
-                my $page_of_ships = $spaceport->view_all_ships($page);
-                $ship_count ||= $page_of_ships->{number_of_ships};
-                push @ships, @{$page_of_ships->{ships}};
-                $page++;
-            }
+            my $result = $spaceport->view_all_ships({no_paging => 1});
+            my @ships = @{$result->{ships}};
             my @excavators = grep { $_->{type} eq 'excavator' } @ships;
 
             push @{$status->{flying}},
