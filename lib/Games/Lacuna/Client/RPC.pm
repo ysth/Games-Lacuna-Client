@@ -60,35 +60,54 @@ sub call {
   my $method = shift;
   my $params = shift;
   
-  my $req = $self->marshal->call_to_request(
-    JSON::RPC::Common::Procedure::Call->inflate(
-      jsonrpc => "2.0",
-      id      => "1",
-      method  => $method,
-      params  => $params,
-    ),
-    uri => URI->new($uri),
-  );
-  my $resp = $self->ua->request($req);
-  my $res = $self->marshal->response_to_result($resp);
 
-  if ($self->{client}->{verbose_rpc}) {
-    my @tmp = @$params;
-    shift @tmp;
-    printf("RPC: %s(%s)\n",$method,@tmp);
-  }
-  $self->{client}->{total_calls}++;
+    # Call the method.  If a Captcha error is returned, attempt to handle it
+    # and re-call the method, up to 3 times
+    my $trying = 1;
+    my ($res, $captcha_attempts);
+    while ($trying) {
+        $trying = 0;
 
-  LacunaRPCException->throw(
-    error   => "RPC Error (" . $res->error->code . "): " . $res->error->message,
-    code    => $res->error->code,
-    ## Note we don't use the key 'message'. Exception::Class stringifies based
-    ## on "message or error" attribute. For backwards compatiblity we don't
-    ## want to change how this object will stringify.
-    text    => $res->error->message,
-  ) if $res->error;
+        my $req = $self->marshal->call_to_request(
+            JSON::RPC::Common::Procedure::Call->inflate(
+                jsonrpc => "2.0",
+                id      => "1",
+                method  => $method,
+                params  => $params,
+            ),
+            uri => URI->new($uri),
+        );
+        my $resp = $self->ua->request($req);
 
-  return $res->deflate;
+        $res = $self->marshal->response_to_result($resp);
+
+        if ($res and $res->error and $res->error->code eq '1016'
+                and $self->{client}->prompt_captcha and ++$captcha_attempts <= 3) {
+            my $captcha = $self->{client}->captcha;
+            my $answer = $captcha->prompt_for_solution;
+            $captcha->solve($answer);
+            $trying = 1;
+        }
+     }
+
+     if ($self->{client}->{verbose_rpc}) {
+         my @tmp = @$params;
+         shift @tmp;
+         printf("RPC: %s(%s)\n",$method,@tmp);
+     }
+     $self->{client}->{total_calls}++;
+     $self->{client}{call_stats}{$method}++;
+
+     LacunaRPCException->throw(
+         error   => "RPC Error (" . $res->error->code . "): " . $res->error->message,
+         code    => $res->error->code,
+         ## Note we don't use the key 'message'. Exception::Class stringifies based
+         ## on "message or error" attribute. For backwards compatiblity we don't
+         ## want to change how this object will stringify.
+         text    => $res->error->message,
+     ) if $res->error;
+
+     return $res->deflate;
 }
 
 
