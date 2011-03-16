@@ -86,6 +86,12 @@ for my $planet_name (sort keys %planets) {
     my $pcc_id = first {
         $buildings->{$_}->{name} eq 'Planetary Command Center'
     } keys %$buildings;
+
+    unless ($pcc_id) {
+        verbose("$planet_name has no PCC (possibly a Space Station), skipping\n");
+        next;
+    }
+
     my $pcc = $glc->building(id => $pcc_id, type => 'PlanetaryCommand');
     my $plans = $pcc->view_plans;
     $plan_count{$planet_name} = scalar @{$plans->{plans}};
