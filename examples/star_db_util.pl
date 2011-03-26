@@ -85,6 +85,9 @@ if (-f $db_file) {
 $star_db->{AutoCommit} = 0;
 
 if ($opts{'merge-db'}) {
+    unless (-f $opts{'merge-db'}) {
+        die "Can't locate database to merge: $opts{'merge-db'}\n";
+    }
     $star_db->{AutoCommit} = 1;
     $star_db->do('attach database ? as d2', {}, $opts{'merge-db'});
     $star_db->{AutoCommit} = 0;
