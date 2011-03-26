@@ -130,7 +130,7 @@ select o2.*, strftime('%s', o2.last_checked) checked_epoch
 from d2.orbitals o2
 join orbitals o1 on o1.star_id = o2.star_id
     and o1.orbit = o2.orbit
-    and coalesce(o2.last_checked, 0) > coalesce(o1.last_checked,0)
+    and coalesce(o2.last_checked, 0) >= coalesce(o1.last_checked,0)
 SQL
         $get_orbitals->execute;
         return 1;
