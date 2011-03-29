@@ -360,6 +360,7 @@ sub get_status {
                 push @{$status->{shipyards}{$planet_name}}, {
                     yard          => $yard,
                     last_finishes => $last,
+                    build_time    => 0, # placeholder in case this doesn't get populated
                 };
             }
         } else {
@@ -868,6 +869,7 @@ sub send_excavators {
                         grep { $_ eq 'excavator' }
                         keys %{$buildable->{buildable}};
                     verbose("An excavator will take $build_time seconds in this yard\n");
+                    $yard->{build_time} = $build_time;
 
                     # Figure out how much time we'd need to fill in for
                     my $finishes = $yard->{last_finishes} || time();
@@ -914,14 +916,15 @@ sub send_excavators {
             verbose("Saving $opts{'save-spots'} spaceport spots\n") if $opts{'save-spots'};
 
             # reduce $build to at most the number of open spaceport slots, holding some open if requested
+            verbose("Reducing to lesser of $build (need) and @{[$status->{open_docks}{$planet} - ($opts{'save-spots'} || 0)]} (spots)\n");
             $build = min($build, $status->{open_docks}{$planet} - ($opts{'save-spots'} || 0));
 
             if ($build) {
                 for (1..$build) {
                     # Add an excavator to a shipyard if we can, to wherever the
                     # shortest build queue is
-
-                    my $yard = reduce { $a->{last_finishes} < $b->{last_finishes} ? $a : $b }
+                    my $yard = reduce { $a->{last_finishes} + $a->{build_time}
+                        < $b->{last_finishes} + $b->{build_time} ? $a : $b }
                         @{$status->{shipyards}{$planet} || []};
 
                     # Catch if this dies, we didnt actually confirm that we could build
