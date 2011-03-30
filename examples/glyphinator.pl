@@ -231,6 +231,7 @@ sub get_status {
     $status->{planets} = \%planets;
 
     # Scan each planet
+    my $now = time();
     for my $planet_name (keys %planets) {
         if (keys %do_planets) {
             next unless $do_planets{normalize_planet($planet_name)};
@@ -255,7 +256,7 @@ sub get_status {
             if ($seconds_remaining) {
                 push @{$status->{digs}}, {
                     planet   => $planet_name,
-                    finished => time() + $seconds_remaining,
+                    finished => $now + $seconds_remaining,
                 };
             } else {
                 $status->{idle}{$planet_name} = 1;
@@ -284,7 +285,7 @@ sub get_status {
             push @{$status->{flying}},
                 map {
                     $_->{distance} = int(($_->{arrives} - $_->{departed}) * $_->{speed} / 360000);
-                    $_->{remaining} = int(($_->{arrives} - time()) * $_->{speed} / 360000);
+                    $_->{remaining} = int(($_->{arrives} - $now) * $_->{speed} / 360000);
                     $_
                 }
                 map {
@@ -349,7 +350,7 @@ sub get_status {
                     grep { $_->{type} eq 'excavator' }
                     @ships_building;
 
-                my $last = 0;
+                my $last = $now;
                 if (@excavators_building) {
                     verbose(pluralize(scalar @excavators_building, "excavator") . " building at this yard\n");
                     push @{$status->{building}{$planet_name}}, @excavators_building;
