@@ -141,9 +141,11 @@ exit;
     BEGIN {
         %types = map { $_ => 1 } (
             'Algae Pond',
+            'Amalgus Meadow',
             'Beeldeban Nest',
             'Citadel of Knope',
             'Crashed Ship Site',
+            'Denton Brambles',
             'Geo Thermal Vent',
             'Interdimensional Rift',
             'Kalavian Ruins',
