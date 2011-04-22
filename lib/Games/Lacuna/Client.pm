@@ -126,12 +126,6 @@ sub stats {
   return Games::Lacuna::Client::Stats->new(client => $self, @_);
 }
 
-sub captcha {
-    my $self = shift;
-    return Games::Lacuna::Client::Captcha->new(client => $self, @_);
-}
-
-
 sub register_destroy_hook {
   my $self = shift;
   my $hook = shift;
