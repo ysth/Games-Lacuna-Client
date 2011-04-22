@@ -4,7 +4,7 @@ use strict;
 use warnings;
 use FindBin;
 use lib "$FindBin::Bin/../lib";
-use List::Util            (qw(first));
+use List::Util            (qw( first sum ));
 use Games::Lacuna::Client ();
 use Getopt::Long          (qw(GetOptions));
 
@@ -90,6 +90,8 @@ foreach my $name ( sort keys %planets ) {
     map {
         printf "%s (%d)\n", ucfirst( $_ ), $glyphs{$_};
     } sort keys %glyphs;
+    
+    printf "\t(%d glyphs)\n", sum values %glyphs;
     
     print "\n";
 }
@@ -282,6 +284,13 @@ Decorative Recipes:
     quantity:
       trona: 1
 Functional Recipes:
+  Amalgus Meadow:
+    order:
+      - beryl
+      - trona
+    quantity:
+      beryl: 1
+      trona: 1
   Algae Pond:
     order:
       - uraninite
@@ -311,6 +320,13 @@ Functional Recipes:
       gold: 1
       monazite: 1
       trona: 1
+  Denton Brambles:
+    order:
+      - rutile
+      - goethite
+    quantity:
+      rutile: 1
+      goethite: 1
   Gas Giant Settlement Platform:
     order:
       - sulfur

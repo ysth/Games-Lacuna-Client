@@ -9,10 +9,14 @@
 #
 # Any informational changes should be made to one of:
 #
-#     data/types.yml
 #     data/building.yml
+#     data/lists.yml
+#     data/resources.yml
+#     data/ships.yml
 #
-# All changes should be followed by running data/build_types.pl
+# All changes should be followed by running:
+#     data/sort_types.pl
+#     data/build_types.pl
 #
 ###################################################
 
@@ -25,12 +29,14 @@ use List::MoreUtils qw(any);
 require Exporter;
 
 our @ISA = qw(Exporter);
-our @EXPORT = qw( food_types ore_types get_tags tag_list meta_building_list meta_type meta_type_list );
+our @EXPORT = qw( food_types ore_types ship_types ship_attribute_types get_tags tag_list meta_building_list meta_type meta_type_list ship_tags_list ship_tags ship_type_human is_food_type is_ore_type );
 our %EXPORT_TAGS = (
-    list     => [qw( food_types ore_types )],
+    list     => [qw( food_types ore_types ship_types ship_attribute_types )],
     resource => [qw( food_types ore_types )],
     tag      => [qw( get_tags tag_list )],
     meta     => [qw( meta_building_list meta_type meta_type_list )],
+    ship     => [qw( ship_types ship_attribute_types ship_tags_list ship_tags ship_type_human )],
+    is       => [qw( is_food_type is_ore_type )],
     all      => [@EXPORT],
 );
 
@@ -39,6 +45,10 @@ our %EXPORT_TAGS = (
     sub food_types {
         return @food;
     }
+    sub is_food_type {
+        my( $check ) = @_;
+        return any { $check eq $_ } @food;
+    }
 }
 
 {
@@ -46,34 +56,59 @@ our %EXPORT_TAGS = (
     sub ore_types {
         return @ore;
     }
+    sub is_ore_type {
+        my( $check ) = @_;
+        return any { $check eq $_ } @ore;
+    }
 }
+
+
+{
+    my @ship_attribute = qw( speed hold_size combat stealth );
+    sub ship_attribute_types {
+        return @ship_attribute;
+    }
+}
+
 
 {
     my %meta_types = (
         command => [qw(
             Archaeology
+            ArtMuseum
             Capitol
             CloakingLab
+            CulinaryInstitute
             Development
             Embassy
             Espionage
             GasGiantLab
             GasGiantPlatform
             GeneticsLab
+            IBS
             Intelligence
+            MercenariesGuild
             MissionCommand
             MunitionsLab
             Network19
             Observatory
+            OperaHouse
             Oversight
             Park
+            Parliament
             PilotTraining
             PlanetaryCommand
+            PoliceStation
             Propulsion
             SAW
             Security
             Shipyard
             SpacePort
+            SSLA
+            SSLB
+            SSLC
+            SSLD
+            StationCommand
             Stockpile
             SubspaceSupplyDepot
             TerraformingLab
@@ -82,6 +117,7 @@ our %EXPORT_TAGS = (
             Trade
             Transporter
             University
+            Warehouse
         )],
         energy => [qw(
             Fission
@@ -117,10 +153,12 @@ our %EXPORT_TAGS = (
         )],
         glyph => [qw(
             AlgaePond
+            AmalgusMeadow
             BeeldebanNest
             CitadelOfKnope
             CrashedShipSite
             Crater
+            DentonBrambles
             EssentiaVein
             GeoThermalVent
             GratchsGauntlet
@@ -161,6 +199,7 @@ our %EXPORT_TAGS = (
             WasteDigester
         )],
         storage => [qw(
+            DistributionCenter
             EnergyReserve
             FoodReserve
             OreStorage
@@ -204,7 +243,7 @@ our %EXPORT_TAGS = (
     }
 }
 {
-    my @tags = qw(alliance colony command decoration defense energy essentia food glyph happiness infrastructure intelligence ore planet sculpture ship storage trade waste water);
+    my @tags = qw(alliance colony command decoration defense energy essentia food glyph happiness infrastructure intelligence ore planet sculpture ship space_station_module storage trade waste water);
     sub tag_list {
         return @tags;
     }
@@ -213,8 +252,10 @@ our %EXPORT_TAGS = (
     my %tags = (
         Algae => [qw(food)],
         AlgaePond => [qw(food glyph)],
+        AmalgusMeadow => [qw(food glyph)],
         Apple => [qw(food)],
         Archaeology => [qw(command glyph infrastructure)],
+        ArtMuseum => [qw(command space_station_module)],
         AtmosphericEvaporator => [qw(water)],
         Bean => [qw(food)],
         Beeldeban => [qw(food)],
@@ -231,10 +272,13 @@ our %EXPORT_TAGS = (
         CornMeal => [qw(food)],
         CrashedShipSite => [qw(glyph ship)],
         Crater => [qw(decoration glyph)],
+        CulinaryInstitute => [qw(command space_station_module)],
         Dairy => [qw(food)],
         Denton => [qw(food)],
+        DentonBrambles => [qw(food glyph)],
         DeployedBleeder => [qw(waste)],
         Development => [qw(command infrastructure)],
+        DistributionCenter => [qw(storage)],
         Embassy => [qw(alliance command infrastructure)],
         EnergyReserve => [qw(energy storage)],
         Entertainment => [qw(happiness infrastructure)],
@@ -250,15 +294,16 @@ our %EXPORT_TAGS = (
         GeoThermalVent => [qw(energy glyph)],
         GratchsGauntlet => [qw(glyph)],
         GreatBallOfJunk => [qw(happiness infrastructure sculpture waste)],
-        Grove => [qw(glyph)],
+        Grove => [qw(decoration glyph)],
         HallsOfVrbansk => [qw(glyph)],
         HydroCarbon => [qw(energy)],
+        IBS => [qw(command space_station_module)],
         Intelligence => [qw(command infrastructure intelligence)],
         InterDimensionalRift => [qw(glyph storage)],
         JunkHengeSculpture => [qw(happiness infrastructure sculpture waste)],
         KalavianRuins => [qw(glyph happiness)],
         KasternsKeep => [qw(glyph)],
-        Lagoon => [qw(glyph)],
+        Lagoon => [qw(decoration glyph)],
         Lake => [qw(decoration glyph)],
         Lapis => [qw(food)],
         LapisForest => [qw(food glyph)],
@@ -267,6 +312,7 @@ our %EXPORT_TAGS = (
         Malcud => [qw(food)],
         MalcudField => [qw(food glyph)],
         MassadsHenge => [qw(glyph)],
+        MercenariesGuild => [qw(command infrastructure ship trade)],
         MetalJunkArches => [qw(happiness infrastructure sculpture waste)],
         Mine => [qw(ore)],
         MiningMinistry => [qw(ore ship)],
@@ -275,6 +321,7 @@ our %EXPORT_TAGS = (
         NaturalSpring => [qw(glyph water)],
         Network19 => [qw(command happiness infrastructure)],
         Observatory => [qw(command infrastructure)],
+        OperaHouse => [qw(command space_station_module)],
         OracleOfAnid => [qw(glyph infrastructure)],
         OreRefinery => [qw(ore)],
         OreStorage => [qw(ore storage)],
@@ -282,15 +329,21 @@ our %EXPORT_TAGS = (
         Pancake => [qw(food)],
         PantheonOfHagness => [qw(glyph planet)],
         Park => [qw(command happiness infrastructure)],
+        Parliament => [qw(command space_station_module)],
         Pie => [qw(food)],
         PilotTraining => [qw(command infrastructure ship)],
         PlanetaryCommand => [qw(command infrastructure)],
+        PoliceStation => [qw(command infrastructure space_station_module)],
         Potato => [qw(food)],
         Propulsion => [qw(command infrastructure ship)],
         PyramidJunkSculpture => [qw(happiness infrastructure sculpture waste)],
         Ravine => [qw(glyph storage waste)],
         RockyOutcrop => [qw(decoration glyph)],
         SAW => [qw(command defense infrastructure)],
+        SSLA => [qw(command infrastructure)],
+        SSLB => [qw(command infrastructure)],
+        SSLC => [qw(command infrastructure)],
+        SSLD => [qw(command infrastructure)],
         Sand => [qw(decoration glyph)],
         Security => [qw(command infrastructure)],
         Shake => [qw(food)],
@@ -299,6 +352,7 @@ our %EXPORT_TAGS = (
         Soup => [qw(food)],
         SpaceJunkPark => [qw(happiness infrastructure sculpture waste)],
         SpacePort => [qw(command ship)],
+        StationCommand => [qw(command infrastructure space_station_module)],
         Stockpile => [qw(command storage)],
         SubspaceSupplyDepot => [qw(command)],
         SupplyPod => [qw(storage)],
@@ -312,6 +366,7 @@ our %EXPORT_TAGS = (
         Transporter => [qw(command infrastructure trade)],
         University => [qw(command infrastructure)],
         Volcano => [qw(glyph ore)],
+        Warehouse => [qw(command space_station_module storage)],
         WasteDigester => [qw(ore waste)],
         WasteEnergy => [qw(energy waste)],
         WasteRecycling => [qw(waste)],
@@ -326,6 +381,301 @@ our %EXPORT_TAGS = (
     sub get_tags{
         my( $building ) = @_;
         return @{ $tags{$building} };
+    }
+}
+{
+    my %ships = (
+        barge => {
+            type_human => 'Barge',
+            tags       => [
+                'Mining',
+                'Trade',
+            ],
+        },
+        bleeder => {
+            type_human => 'Bleeder',
+            tags       => [
+                'War',
+            ],
+        },
+        cargo_ship => {
+            type_human => 'Cargo Ship',
+            tags       => [
+                'Intelligence',
+                'Mining',
+                'Trade',
+            ],
+        },
+        colony_ship => {
+            type_human => 'Colony Ship',
+            tags       => [
+                'Colonization',
+            ],
+        },
+        detonator => {
+            type_human => 'Detonator',
+            tags       => [
+                'War',
+            ],
+        },
+        dory => {
+            type_human => 'Dory',
+            tags       => [
+                'Intelligence',
+                'Mining',
+                'Trade',
+            ],
+        },
+        drone => {
+            type_human => 'Drone',
+            tags       => [
+                'War',
+            ],
+        },
+        excavator => {
+            type_human => 'Excavator',
+            tags       => [
+                'Exploration',
+            ],
+        },
+        fighter => {
+            type_human => 'Fighter',
+            tags       => [
+                'War',
+            ],
+        },
+        freighter => {
+            type_human => 'Freighter',
+            tags       => [
+                'Mining',
+                'Trade',
+            ],
+        },
+        galleon => {
+            type_human => 'Galleon',
+            tags       => [
+                'Mining',
+                'Trade',
+            ],
+        },
+        gas_giant_settlement_ship => {
+            type_human => 'Gas Giant Settlement Ship',
+            tags       => [
+                'Colonization',
+            ],
+        },
+        hulk => {
+            type_human => 'Hulk',
+            tags       => [
+                'Mining',
+                'Trade',
+            ],
+        },
+        mining_platform_ship => {
+            type_human => 'Mining Platform Ship',
+            tags       => [
+                'Mining',
+            ],
+        },
+        observatory_seeker => {
+            type_human => 'Observatory Seeker',
+            tags       => [
+                'War',
+            ],
+        },
+        placebo => {
+            type_human => 'Placebo',
+            tags       => [
+                'War',
+            ],
+        },
+        placebo2 => {
+            type_human => 'Placebo II',
+            tags       => [
+                'War',
+            ],
+        },
+        placebo3 => {
+            type_human => 'Placebo III',
+            tags       => [
+                'War',
+            ],
+        },
+        placebo4 => {
+            type_human => 'Placebo IV',
+            tags       => [
+                'War',
+            ],
+        },
+        placebo5 => {
+            type_human => 'Placebo V',
+            tags       => [
+                'War',
+            ],
+        },
+        placebo6 => {
+            type_human => 'Placebo VI',
+            tags       => [
+                'War',
+            ],
+        },
+        probe => {
+            type_human => 'Probe',
+            tags       => [
+                'Exploration',
+                'Intelligence',
+            ],
+        },
+        scanner => {
+            type_human => 'Scanner',
+            tags       => [
+                'Exploration',
+                'Intelligence',
+            ],
+        },
+        scow => {
+            type_human => 'Scow',
+            tags       => [
+                'War',
+            ],
+        },
+        security_ministry_seeker => {
+            type_human => 'Security Ministry Seeker',
+            tags       => [
+                'War',
+            ],
+        },
+        short_range_colony_ship => {
+            type_human => 'Short Range Colony Ship',
+            tags       => [
+                'Colonization',
+            ],
+        },
+        smuggler_ship => {
+            type_human => 'Smuggler Ship',
+            tags       => [
+                'Intelligence',
+                'Mining',
+                'Trade',
+            ],
+        },
+        snark => {
+            type_human => 'Snark',
+            tags       => [
+                'War',
+            ],
+        },
+        snark2 => {
+            type_human => 'Snark II',
+            tags       => [
+                'War',
+            ],
+        },
+        snark3 => {
+            type_human => 'Snark III',
+            tags       => [
+                'War',
+            ],
+        },
+        space_station_hull => {
+            type_human => 'Space Station Hull',
+            tags       => [
+                'Intelligence',
+                'War',
+            ],
+        },
+        spaceport_seeker => {
+            type_human => 'Spaceport Seeker',
+            tags       => [
+                'War',
+            ],
+        },
+        spy_pod => {
+            type_human => 'Spy Pod',
+            tags       => [
+                'Intelligence',
+            ],
+        },
+        spy_shuttle => {
+            type_human => 'Spy Shuttle',
+            tags       => [
+                'Intelligence',
+            ],
+        },
+        stake => {
+            type_human => 'Stake',
+            tags       => [
+                'Colonization',
+            ],
+        },
+        supply_pod => {
+            type_human => 'Supply Pod',
+            tags       => [
+                'Colonization',
+            ],
+        },
+        supply_pod2 => {
+            type_human => 'Supply Pod II',
+            tags       => [
+                'Colonization',
+            ],
+        },
+        supply_pod3 => {
+            type_human => 'Supply Pod III',
+            tags       => [
+                'Colonization',
+            ],
+        },
+        supply_pod4 => {
+            type_human => 'Supply Pod IV',
+            tags       => [
+                'Colonization',
+            ],
+        },
+        surveyor => {
+            type_human => 'Surveyor',
+            tags       => [
+                'Exploration',
+                'Intelligence',
+            ],
+        },
+        sweeper => {
+            type_human => 'Sweeper',
+            tags       => [
+                'War',
+            ],
+        },
+        terraforming_platform_ship => {
+            type_human => 'Terraforming Platform Ship',
+            tags       => [
+                'Colonization',
+            ],
+        },
+        thud => {
+            type_human => 'Thud',
+            tags       => [
+                'War',
+            ],
+        },
+    );
+
+    sub ship_types {
+        return keys %ships;
+    }
+    sub ship_tags_list {
+        my @tags = qw( Colonization Exploration Intelligence Mining Trade War );
+        return wantarray ? @tags : [@tags];
+    }
+    sub ship_tags {
+        my( $type ) = @_;
+        return unless $type;
+        my $tags = $ships{$type}{tags};
+        return wantarray ? @$tags : [@$tags];
+    }
+    sub ship_type_human {
+        my( $type ) = @_;
+        return unless $type;
+        return $ships{$type}{type_human};
     }
 }
 1;
@@ -348,6 +698,12 @@ Games::Lacuna::Client::Types
 
 =item ore_types
 
+=item ship_types
+
+=item ship_attribute_types
+
+=item ship_attribute_types
+
 =item get_tags
 
 =item tag_list
@@ -357,6 +713,20 @@ Games::Lacuna::Client::Types
 =item meta_type
 
 =item meta_type_list
+
+=item ship_types
+
+=item ship_attribute_types
+
+=item ship_tags_list
+
+=item ship_tags
+
+=item ship_type_human
+
+=item is_food_type
+
+=item is_ore_type
 
 =back
 

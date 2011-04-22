@@ -12,8 +12,9 @@ use FindBin;
 use lib "$FindBin::Bin/../lib";
 use Games::Lacuna::Client ();
 
-my $login_attempts = 5;
-my $reattempt_wait = 0.1;
+my $ships_per_fleet = 20;
+my $login_attempts  = 5;
+my $reattempt_wait  = 0.1;
 
 my @ship_names;
 my @ship_types;
@@ -27,26 +28,32 @@ my $y;
 my $star;
 my $own_star;
 my $planet;
+my $fleet = 1;
+my $fleet_speed = 0;
 my $sleep;
 my $seconds;
+my $rename;
 my $dryrun;
 
 GetOptions(
-    'ship=s@'   => \@ship_names,
-    'type=s@'   => \@ship_types,
-    'speed=i'   => \$speed,
-    'max=i'     => \$max,
-    'leave=i'   => \$leave,
-    'from=s'    => \$from,
-    'share=s'   => \$share,
-    'x=i'       => \$x,
-    'y=i'       => \$y,
-    'star=s'    => \$star,
-    'planet=s'  => \$planet,
-    'own-star'  => \$own_star,
-    'sleep=i'   => \$sleep,
-    'seconds=i' => \$seconds,
-    'dryrun!'   => \$dryrun,
+    'ship=s@'           => \@ship_names,
+    'type=s@'           => \@ship_types,
+    'speed=i'           => \$speed,
+    'max=i'             => \$max,
+    'leave=i'           => \$leave,
+    'from=s'            => \$from,
+    'share=s'           => \$share,
+    'x=i'               => \$x,
+    'y=i'               => \$y,
+    'star=s'            => \$star,
+    'planet=s'          => \$planet,
+    'fleet!'            => \$fleet,
+    'fleet-speed=i'     => \$fleet_speed,
+    'own-star|own_star' => \$own_star,
+    'sleep=i'           => \$sleep,
+    'seconds=i'         => \$seconds,
+    'rename'            => \$rename,
+    'dryrun|dry-run'    => \$dryrun,
 );
 
 usage() if !@ship_names && !@ship_types;
@@ -77,7 +84,8 @@ unless ( $cfg_file and -e $cfg_file ) {
 }
 
 my $client = Games::Lacuna::Client->new(
-	cfg_file => $cfg_file,
+	cfg_file       => $cfg_file,
+    prompt_captcha => 1,
 	 #debug    => 1,
 );
 
@@ -101,32 +109,15 @@ if ( defined $x && defined $y ) {
     $target      = { x => $x, y => $y };
     $target_name = "$x,$y";
 }
-elsif ($star) {
-    my $star_result = request(
-        object => $client->map,
-        method => 'get_star_by_name',
-        params => [ $star ],
-    )->{star};
-    
-    if ($planet) {
-        # send to planet on star
-        my $bodies = $star_result->{bodies};
-        
-        my ($body) = first { $_->{name} eq $planet } @$bodies;
-        
-        die "Planet '$planet' not found at star '$star'"
-            if !$body;
-        
-        $target      = { body_id => $body->{id} };
-        $target_name = "$planet [$star]";
-    }
-    else {
-        # send to star
-        $target      = { star_id => $star_result->{id} };
-        $target_name = $star;
-    }
+elsif ( defined $star ) {
+    $target      = { star_name => $star };
+    $target_name = $star;
 }
-elsif ($own_star) {
+elsif ( defined $planet ) {
+    $target      = { body_name => $planet };
+    $target_name = $planet;
+}
+elsif ( $own_star ) {
     my $body = $client->body( id => $planets{$from} );
     
     $body = request(
@@ -138,12 +129,7 @@ elsif ($own_star) {
     $target_name = "own star";
 }
 else {
-    # send to own colony
-    my $target_id = $planets{$planet}
-        or die "Colony '$planet' not found\n";
-    
-    $target      = { body_id => $target_id };
-    $target_name = $planet;
+    die "target arguments missing\n";
 }
 
 # Load planet data
@@ -225,6 +211,14 @@ die "No ships available to send\n"
 
 splice @ships, $use_count;
 
+# check fleet-speed is valid
+if ( $fleet_speed ) {
+    die "--fleet-speed: '$fleet_speed' exceeds slowest ship selected to send\n"
+        if first {
+            $_->{speed} < $fleet_speed
+        } @ships;
+}
+
 # send immediately?
 
 if ($seconds) {
@@ -239,33 +233,116 @@ elsif ($sleep) {
     sleep $sleep;
 }
 
-SHIP:
-for my $ship ( @ships ) {
-    print "DRYRUN: "
-        if $dryrun;
+if ( $dryrun ) {
+    print "DRYRUN\n";
+    print "======\n";
     
-    try {
+    print "Sent to: $target_name\n";
+    
+    for my $ship (@ships) {
+        printf "%s\n", $ship->{name};
+    }
+    
+    exit;
+}
+
+# don't send 1 ship as a fleet
+if ( @ships == 1 ) {
+    undef $fleet;
+}
+
+my @fleet;
+
+for my $ship (@ships) {
+    if ( $fleet && $ship->{type} ne 'scow' ) {
+        push @fleet, $ship;
+        
+        if ( @fleet == $ships_per_fleet ) {
+            send_fleet( \@fleet );
+            undef @fleet;
+        }
+    }
+    else {
+        send_ship( $ship );
+    }
+}
+
+if ( @fleet ) {
+    send_fleet( \@fleet );
+}
+
+if ( $rename ) {
+    print "\n";
+    
+    # renaming isn't time-sensitive, so try to avoid hitting the max
+    # requests per minute
+    $client->rpc_sleep(1);
+    
+    for my $ship (@ships) {
+        
+        my $name = sprintf "%s (%s)",
+            $ship->{type_human},
+            $target_name;
+        
         request(
             object => $space_port,
-            method => 'send_ship',
+            method => 'name_ship',
             params => [
                 $ship->{id},
-                $target,
+                $name,
             ],
-        ) unless $dryrun;
+        );
+        
+        printf qq{Renamed "%s" to "%s"\n},
+            $ship->{name},
+            $name;
     }
-    catch {
-        my $error = $_;
-        warn "Failed to send ship $ship->{name} ($ship->{id}): $_\n";
-        # supress "exiting subroutine with 'last'" warning
-        no warnings;
-        next SHIP;
-    };
-    
-    printf "Sent %s to %s\n", $ship->{name}, $target_name;
 }
 
 exit;
+
+sub send_ship {
+    my ( $ship ) = @_;
+    
+    my $return = request(
+        object => $space_port,
+        method => 'send_ship',
+        params => [
+            $ship->{id},
+            $target,
+        ],
+    );
+    
+    print "Sent ship to: $target_name\n";
+    
+    printf qq{\t%s "%s" arriving %s\n},
+        $return->{ship}{type_human},
+        $return->{ship}{name},
+        $return->{ship}{date_arrives};
+}
+
+sub send_fleet {
+    my ( $ships ) = @_;
+    
+    my $return = request(
+        object => $space_port,
+        method => 'send_fleet',
+        params => [
+            [ map { $_->{id} } @$ships ],
+            $target,
+            $fleet_speed,
+        ],
+    );
+    
+    print "Sent fleet to: $target_name\n";
+    
+    for my $ship ( @{ $return->{fleet} } ) {
+        printf qq{\t%s "%s" arriving %s\n},
+            $ship->{ship}{type_human},
+            $ship->{ship}{name},
+            $ship->{ship}{date_arrives};
+    }
+}
 
 sub request {
     my ( %params )= @_;
@@ -275,14 +352,16 @@ sub request {
     my $params = delete $params{params} || [];
     
     my $request;
+    my $error;
     
 RPC_ATTEMPT:
     for ( 1 .. $login_attempts ) {
+        
         try {
             $request = $object->$method(@$params);
         }
         catch {
-            my $error = $_;
+            $error = $_;
             
             # if session expired, try again without a session
             my $client = $object->client;
@@ -307,8 +386,10 @@ RPC_ATTEMPT:
             if $request;
     }
     
-    die "RPC request failed $login_attempts times, giving up\n"
-        if !$request;
+    if (!$request) {
+        warn "RPC request failed $login_attempts times, giving up\n";
+        die $error;
+    }
     
     return $request;
 }
@@ -316,20 +397,23 @@ RPC_ATTEMPT:
 sub usage {
   die <<"END_USAGE";
 Usage: $0 lacuna.yml
-       --ship       NAME
-       --type       TYPE
-       --speed      SPEED
-       --max        MAX
-       --leave      COUNT
-       --share      PROPORTION OF AVAILABLE SHIPS TO SEND
-       --from       NAME  (required)
-       --x          COORDINATE
-       --y          COORDINATE
-       --star       NAME
-       --planet     NAME
-       --own_star
-       --sleep      SECONDS
-       --seconds    SECONDS
+       --ship        NAME
+       --type        TYPE
+       --speed       SPEED
+       --max         MAX
+       --leave       COUNT
+       --share       PROPORTION OF AVAILABLE SHIPS TO SEND
+       --from        NAME  (required)
+       --x           COORDINATE
+       --y           COORDINATE
+       --star        NAME
+       --planet      NAME
+       --own-star
+       --fleet
+       --fleet-speed SPEED
+       --sleep       SECONDS
+       --seconds     SECONDS
+       --rename
        --dryrun
 
 Either of --ship_name or --type is required.
@@ -353,10 +437,19 @@ ships.
 
 If --star is missing, the planet is assumed to be one of your own colonies.
 
-At least one of --star or --planet or --own_star or both --x and --y are
+At least one of --star or --planet or --own-star or both --x and --y are
 required.
 
---own_star and --planet cannot be used together.
+--own-star and --planet cannot be used together.
+
+If --fleet is true, will send up to 20 ships in a fleet at once.
+Fleet defaults to true.
+--nofleet will force sending all ships individually.
+Scows will always be sent individually, regardless of the value of --fleet.
+If only 1 ship is being sent, it will not be sent as a fleet.
+
+If --fleet-speed is set, all ships will travel at that speed.
+It is a fatal error to specify a speed greater than the slowest ship being sent.
 
 If --seconds is specified, what until that second of the current minute before
 sending. If that second has already passed, send immediately.
@@ -364,7 +457,11 @@ sending. If that second has already passed, send immediately.
 If --sleep is specified, will wait that number of seconds before sending ships.
 Ignored if --seconds is set.
 
-If --dryrun is specified, nothing will be sent, but all actions that WOULD
+If --rename is provided, each ship sent will be renamed using the form
+"Type (Target)". This may be helpful for keeping track of fighters on remote
+defense.
+
+If --dryrun is provided, nothing will be sent, but all actions that WOULD
 happen are reported
 
 END_USAGE

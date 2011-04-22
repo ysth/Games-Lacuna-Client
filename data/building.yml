@@ -14,6 +14,12 @@ AlgaePond:
     - food
     - glyph
   type: glyph
+AmalgusMeadow:
+  produces: food
+  tags:
+    - food
+    - glyph
+  type: glyph
 Apple:
   produces: food
   requires:
@@ -28,6 +34,11 @@ Archaeology:
     - command
     - glyph
     - infrastructure
+  type: command
+ArtMuseum:
+  tags:
+    - command
+    - space_station_module
   type: command
 AtmosphericEvaporator:
   produces: water
@@ -166,6 +177,11 @@ Crater:
     - decoration
     - glyph
   type: glyph
+CulinaryInstitute:
+  tags:
+    - command
+    - space_station_module
+  type: command
 Dairy:
   produces: food
   requires:
@@ -186,6 +202,12 @@ Denton:
   tags:
     - food
   type: food
+DentonBrambles:
+  produces: food
+  tags:
+    - food
+    - glyph
+  type: glyph
 DeployedBleeder:
   produces: waste
   tags:
@@ -196,6 +218,15 @@ Development:
     - command
     - infrastructure
   type: command
+DistributionCenter:
+  stores:
+    - food
+    - ore
+    - water
+    - energy
+  tags:
+    - storage
+  type: storage
 Embassy:
   tags:
     - alliance
@@ -294,6 +325,7 @@ GreatBallOfJunk:
   type: happiness
 Grove:
   tags:
+    - decoration
     - glyph
   type: glyph
 HallsOfVrbansk:
@@ -307,6 +339,11 @@ HydroCarbon:
   tags:
     - energy
   type: energy
+IBS:
+  tags:
+    - command
+    - space_station_module
+  type: command
 Intelligence:
   requires:
     university: 2
@@ -340,6 +377,7 @@ KasternsKeep:
   type: glyph
 Lagoon:
   tags:
+    - decoration
     - glyph
   type: glyph
 Lake:
@@ -409,6 +447,13 @@ MassadsHenge:
   tags:
     - glyph
   type: glyph
+MercenariesGuild:
+  tags:
+    - command
+    - infrastructure
+    - ship
+    - trade
+  type: command
 MetalJunkArches:
   produces: happiness
   tags:
@@ -459,6 +504,11 @@ Observatory:
     - command
     - infrastructure
   type: command
+OperaHouse:
+  tags:
+    - command
+    - space_station_module
+  type: command
 OracleOfAnid:
   tags:
     - glyph
@@ -503,6 +553,11 @@ Park:
     - happiness
     - infrastructure
   type: command
+Parliament:
+  tags:
+    - command
+    - space_station_module
+  type: command
 Pie:
   produces: food
   requires:
@@ -527,6 +582,12 @@ PlanetaryCommand:
   tags:
     - command
     - infrastructure
+  type: command
+PoliceStation:
+  tags:
+    - command
+    - infrastructure
+    - space_station_module
   type: command
 Potato:
   produces: food
@@ -569,6 +630,26 @@ SAW:
   tags:
     - command
     - defense
+    - infrastructure
+  type: command
+SSLA:
+  tags:
+    - command
+    - infrastructure
+  type: command
+SSLB:
+  tags:
+    - command
+    - infrastructure
+  type: command
+SSLC:
+  tags:
+    - command
+    - infrastructure
+  type: command
+SSLD:
+  tags:
+    - command
     - infrastructure
   type: command
 Sand:
@@ -625,6 +706,14 @@ SpacePort:
   tags:
     - command
     - ship
+  type: command
+StationCommand:
+  stores:
+    - plans
+  tags:
+    - command
+    - infrastructure
+    - space_station_module
   type: command
 Stockpile:
   tags:
@@ -706,6 +795,17 @@ Volcano:
     - glyph
     - ore
   type: glyph
+Warehouse:
+  stores:
+    - food
+    - ore
+    - water
+    - energy
+  tags:
+    - command
+    - space_station_module
+    - storage
+  type: command
 WasteDigester:
   produces: ore
   tags:

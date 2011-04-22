@@ -42,7 +42,8 @@ unless ( $cfg_file and -e $cfg_file ) {
 }
 
 my $client = Games::Lacuna::Client->new(
-	cfg_file => $cfg_file,
+	cfg_file  => $cfg_file,
+    rpc_sleep => 1,
 	# debug    => 1,
 );
 
@@ -84,8 +85,6 @@ if ( $operate ) {
             print "Cannot operate again:\n";
             printf "%s\n", $return->{reason}[1];
         }
-        
-        sleep 1;
     }
 }
 else {

@@ -12,32 +12,43 @@ require Games::Lacuna::Client::Buildings::Simple;
 
 our @BuildingTypes = (qw(
     Archaeology
+    ArtMuseum
     Capitol
+    CulinaryInstitute
     Development
+    DistributionCenter
     Embassy
     EnergyReserve
     Entertainment
     FoodReserve
     GeneticsLab
     HallsOfVrbansk
+    IBS
     Intelligence
     LibraryOfJith
+    MercenariesGuild
     MiningMinistry
     MissionCommand
     Network19
     Observatory
+    OperaHouse
     OracleOfAnid
     OreStorage
     Park
+    Parliament
     PlanetaryCommand
+    PoliceStation
     Security
     Shipyard
     SpacePort
+    SSLA
+    StationCommand
     SubspaceSupplyDepot
     TempleOfTheDrajilites
     ThemePark
     Trade
     Transporter
+    Warehouse
     WasteRecycling
     WaterStorage
   ),

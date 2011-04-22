@@ -53,13 +53,19 @@ foreach my $name ( sort keys %planets ) {
     
     my $buildings = $result->{buildings};
 
-    # Find the PPC
-    my $ppc_id = first {
-            $buildings->{$_}->{name} eq 'Planetary Command Center'
+    # PPC or SC?
+    my $command_url = $result->{status}{body}{type} eq 'space station'
+                    ? '/stationcommand'
+                    : '/planetarycommand';
+    
+    my $command_id = first {
+            $buildings->{$_}{url} eq $command_url
     } keys %$buildings;
     
-    my $ppc   = $client->building( id => $ppc_id, type => 'PlanetaryCommand' );
-    my $plans = $ppc->view_plans->{plans};
+    my $command_type = Games::Lacuna::Client::Buildings::type_from_url($command_url);
+    
+    my $command = $client->building( id => $command_id, type => $command_type );
+    my $plans   = $command->view_plans->{plans};
     
     next if !@$plans;
     
@@ -69,16 +75,28 @@ foreach my $name ( sort keys %planets ) {
     
     my $max_length = max map { length $_->{name} } @$plans;
     
+    my %plan;
+    
     for my $plan ( sort { $a->{name} cmp $b->{name} } @$plans ) {
-        printf "%${max_length}s, level %d",
-            $plan->{name},
-            $plan->{level};
-        
-        if ( $plan->{extra_build_level} ) {
-            printf " + %d", $plan->{extra_build_level};
+        $plan{ $plan->{name} }{ $plan->{level} }{ $plan->{extra_build_level} } ++;
+    }
+    
+    for my $plan ( sort keys %plan ) {
+        for my $level ( sort keys %{ $plan{$plan} } ) {
+            for my $extra ( sort keys %{ $plan{$plan}{$level} } ) {
+                printf "%s %d+%d",
+                    $plan,
+                    $level,
+                    $extra;
+                
+                my $count = $plan{$plan}{$level}{$extra};
+                
+                printf " (x%d)", $count
+                    if $count > 1;
+                
+                print "\n";
+            }
         }
-        
-        print "\n";
     }
     
     print "\n";
