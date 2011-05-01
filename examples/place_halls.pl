@@ -86,8 +86,12 @@ for my $planet_name (keys %planets) {
         my ($x, $y) = $plot =~ /([\d-]+):([\d-]+)/;
         delete $plots{$plot};
         pop @halls;
-        output("Placing Halls at $x, $y on $planet_name\n");
-        $halls->build($planets{$planet_name}, $x, $y);
+        if ($opts{'dry-run'}) {
+            output("Placing Halls at $x, $y on $planet_name\n");
+            $halls->build($planets{$planet_name}, $x, $y);
+        } else {
+            output("Would have placed Halls at $x, $y on $planet_name\n");
+        }
     }
 }
 
