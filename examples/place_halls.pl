@@ -87,10 +87,10 @@ for my $planet_name (keys %planets) {
         delete $plots{$plot};
         pop @halls;
         if ($opts{'dry-run'}) {
+            output("Would have placed Halls at $x, $y on $planet_name\n");
+        } else {
             output("Placing Halls at $x, $y on $planet_name\n");
             $halls->build($planets{$planet_name}, $x, $y);
-        } else {
-            output("Would have placed Halls at $x, $y on $planet_name\n");
         }
     }
 }
