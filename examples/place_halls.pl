@@ -21,6 +21,7 @@ GetOptions(\%opts,
     'planet=s@',
     'dry-run|dry',
     'max=i',
+    'delay=s',
 ) or usage();
 
 usage() if $opts{h};
@@ -92,6 +93,8 @@ for my $planet_name (keys %planets) {
             output("Placing Halls at $x, $y on $planet_name\n");
             $halls->build($planets{$planet_name}, $x, $y);
         }
+
+        sleep $opts{delay} if $opts{delay};
     }
 }
 
@@ -144,6 +147,8 @@ Options:
                            be inspected.
   --dry-run              - Don't actually take any action, just report status and
                            what actions would have taken place.
+  --max <n>              - Build at most <n> Halls, default is 1
+  --delay <n>            - Sleep for <n> seconds between each build
 END
     exit 1;
 }
