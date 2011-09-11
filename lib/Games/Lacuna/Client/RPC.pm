@@ -4,7 +4,7 @@ use strict;
 use warnings;
 use Carp 'croak';
 use Scalar::Util 'weaken';
-use Time::HiRes qw( sleep );
+use Time::HiRes;
 
 use Games::Lacuna::Client;
 
@@ -70,7 +70,7 @@ around call => sub {
         $res = $self->$orig($uri,$method,$params);
 
         # Throttle per 3.0 changes
-        sleep($self->{client}->rpc_sleep) if $self->{client}->rpc_sleep;
+        Time::HiRes::sleep($self->{client}->rpc_sleep) if $self->{client}->rpc_sleep;
 
         if ($res and $res->has_error
             and $res->error->code eq '1016'

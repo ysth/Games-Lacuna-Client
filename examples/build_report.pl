@@ -21,8 +21,8 @@ require Time::Duration if $use_seconds_left;
 my $cfg_file = Games::Lacuna::Client->get_config_file([shift(@ARGV) || 'lacuna.yml']);
 
 my $client = Games::Lacuna::Client->new(
-	cfg_file => $cfg_file,
-	# debug    => 1,
+    cfg_file => $cfg_file,
+    # debug    => 1,
 );
 
 # Load the planets
@@ -39,16 +39,16 @@ foreach my $name ( sort keys %$planets ) {
     my $planet    = $client->body( id => $planet_id );
     my $result    = $planet->get_buildings;
     my $buildings = $result->{buildings};
-    
+
     my @build;
-    
+
     for my $building_id ( sort keys %$buildings ) {
         push @build, $buildings->{$building_id}
             if $buildings->{$building_id}{pending_build};
     }
-    
+
     next if !@build;
-    
+
     print "$name\n";
     print "=" x length $name;
     print "\n";
@@ -58,6 +58,6 @@ foreach my $name ( sort keys %$planets ) {
             $building->{name},
             $use_seconds_left ? Time::Duration::duration($building->{pending_build}{seconds_remaining}) : $building->{pending_build}{end};
     }
-    
+
     print "\n";
 }

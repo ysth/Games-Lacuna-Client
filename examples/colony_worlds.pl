@@ -32,20 +32,26 @@ use YAML::Any ();
 use List::Util qw/first sum/;
 use Data::Dumper;
 use Getopt::Long;
+use DBI;
 
 my $verbose   = 1;
 my $help      = 0;
 my $cfg_file  = 'lacuna.yml';
 my $cond_file = 'colony_conditions.yml';
+my $db_file   = 'stars.db';
 
 GetOptions(
     'cfg=s'       => \$cfg_file,
     'cond_file=s' => \$cond_file,
+    'db=s'        => \$db_file,
     "verbose!"    => \$verbose,
     "help"        => \$help,
 ) or usage();
 
 usage() if $help;
+
+my $dbh = DBI->connect("DBI:SQLite:dbname=$db_file",'','')
+    or die "Can't open $db_file: $DBI::errstr\n";
 
 my $sortby = shift(@ARGV) || 'score';
 unless ( $cfg_file and -e $cfg_file ) {
@@ -172,8 +178,8 @@ if (-e $cond_file) {
 my $data = $client->empire->view_species_stats();
 
 # Get orbits
-my $min_orbit = $data->{species}->{min_orbit};
-my $max_orbit = $data->{species}->{max_orbit};
+my $min_orbit = $conditions->{min_orbit} || $data->{species}->{min_orbit};
+my $max_orbit = $conditions->{max_orbit} || $data->{species}->{max_orbit};
 
 # Get planets
 my $planets        = $data->{status}->{empire}->{planets};
@@ -211,8 +217,8 @@ for my $star (@stars) {
     }
     
     push @planets, grep { 
-		not defined $_->{empire} && $_->{orbit} >= $min_orbit && $_->{orbit} <= $max_orbit && 
-		( $_->{type} eq 'habitable planet' || $conditions->{'gas_giant'} && $_->{type} eq 'gas giant' )
+		not defined $_->{empire} and $_->{orbit} >= $min_orbit and $_->{orbit} <= $max_orbit and
+		((!defined $conditions->{habitable} or ($conditions->{habitable} and $_->{type} eq 'habitable planet')) or ($conditions->{'gas_giant'} and $_->{type} eq 'gas giant'))
 	} @{$star->{bodies}};
 }
 

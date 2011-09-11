@@ -41,6 +41,7 @@ require Games::Lacuna::Client::Empire;
 require Games::Lacuna::Client::Inbox;
 require Games::Lacuna::Client::Map;
 require Games::Lacuna::Client::Stats;
+require Games::Lacuna::Client::Captcha;
 
 
 sub new {
@@ -123,7 +124,6 @@ sub stats {
   my $self = shift;
   return Games::Lacuna::Client::Stats->new(client => $self, @_);
 }
-
 
 sub register_destroy_hook {
   my $self = shift;
