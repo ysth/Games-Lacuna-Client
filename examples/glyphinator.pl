@@ -1,4 +1,5 @@
 #!/usr/bin/perl
+$|=1;
 #
 # =================
 #   Glyphinator
@@ -76,6 +77,7 @@ GetOptions(\%opts,
     'fill:i',
     'max-build=i',
     'save-spots=i',
+    'ignore-production',
 
     'and'                     => $batch_opt_cb,
     'max-excavators|max=s'    => $batch_opt_cb,
@@ -909,7 +911,12 @@ sub send_excavators {
                 my $by_resource = min($by_ore, $by_water, $by_food, $by_energy);
                 my $need_by_resource = int($by_resource * ($minutes / 60));
                 verbose("$planet can sustain $by_resource excavators per hour based on current production, for $need_by_resource in $minutes minutes\n");
-                $need = min($need, $need_by_resource);
+                if (! $opts{'ignore-production'}) {
+                    $need = min($need, $need_by_resource);
+                }
+                elsif ($need_by_resource < $need) {
+                    verbose("Trying to build $need anyway\n");
+                }
 
                 # make whichever is higher, the number calculated here, or from --rebuild
                 $build = max($build, $need);
