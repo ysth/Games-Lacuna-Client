@@ -63,6 +63,7 @@ GetOptions(\%opts,
     'planet=s@',
     'dry-run|dry',
     'full-times',
+    'glyphs-by-halls',
 
     # Arch digs
     'do-digs|dig',
@@ -382,9 +383,27 @@ sub report_status {
         my $total_glyphs = 0;
         output("Current glyphs:\n");
         my $cnt;
-        for my $glyph (sort keys %{$status->{glyphs}}) {
-            $total_glyphs += $status->{glyphs}->{$glyph};
-            output(sprintf '%13s: %3s', $glyph, $status->{glyphs}->{$glyph});
+        my @glyphs;
+        if ($opts{'glyphs-by-halls'}) {
+            my %glyphs = %{$status->{glyphs}};
+            for my $halls (
+                [ qw/goethite halite gypsum trona/ ],
+                [ qw/gold anthracite uraninite bauxite/ ],
+                [ qw/kerogen methane sulfur zircon/ ],
+                [ qw/monazite fluorite beryl magnetite/ ],
+                [ qw/rutile chromite chalcopyrite galena/ ],
+            ) {
+                push @glyphs, @$halls if grep delete $glyphs{$_}, @$halls;
+            }
+            # err, any unrecognized ones?
+            push @glyphs, sort keys %glyphs;
+        }
+        else {
+            @glyphs = sort keys %{$status->{glyphs}};
+        }
+        for my $glyph (@glyphs) {
+            $total_glyphs += $status->{glyphs}->{$glyph} || 0;
+            output(sprintf '%13s: %3s', $glyph, $status->{glyphs}->{$glyph} || 0);
             output("\n") unless ++$cnt % 4
         }
         output("\n") if $cnt % 4;
@@ -1184,6 +1203,7 @@ Options:
   --dry-run              - Don't actually take any action, just report status and
                            what actions would have taken place.
   --full-times           - Specify timestamps in full precision instead of rounded
+  --glyphs-by-halls      - Report glyph counts in Halls of Vrbansk order
 
 The excavator arguments can be combined into separate batches, to allow you to
 send with multiple set of criteria, separated by an --and argument.  All of the
